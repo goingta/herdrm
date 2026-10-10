@@ -37,8 +37,80 @@ final class MobileDeviceSession {
     private var snapshotRefreshToken: UUID?
     private var refreshRequested = false
     private var statusGeneration: UInt64 = 0
+    private var snapshotEpoch: UInt64 = 0
     private let connector: MobileTransportConnector
     private var connectToken: UUID?
+    private var validationToken: UUID?
+    private var validationTask: Task<Void, Never>?
+    private var validationDeadlineTask: Task<Void, Never>?
+    private(set) var isValidating = false
+
+    var actionsReady: Bool {
+        if case .connected = state { return !isValidating }
+        return false
+    }
+
+    /// A foreground return validates the held control channel before input or
+    /// read acknowledgement resumes. A healthy SSH/PTY is never reopened.
+    func resume(timeout: Duration = .seconds(3)) {
+        guard case .connected = state, transport != nil else {
+            Task { await connect() }
+            return
+        }
+        guard !isValidating else { return }
+        isValidating = true
+        invalidateSnapshotRefresh()
+        let token = UUID()
+        validationToken = token
+        onChange?()
+        validationTask = Task { [weak self] in
+            guard let self else { return }
+            let succeeded = await self.refresh()
+            guard self.validationToken == token, !Task.isCancelled else { return }
+            self.finishValidation(token: token, succeeded: succeeded)
+        }
+        validationDeadlineTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard let self, !Task.isCancelled, self.validationToken == token else { return }
+            self.finishValidation(token: token, succeeded: false)
+        }
+    }
+
+    private func finishValidation(token: UUID, succeeded: Bool) {
+        guard validationToken == token else { return }
+        validationToken = nil
+        validationDeadlineTask?.cancel()
+        validationTask?.cancel()
+        validationDeadlineTask = nil
+        validationTask = nil
+        isValidating = false
+        if succeeded, case .connected = state { onChange?(); return }
+        state = .failed(AppLocalization.string("Connection lost"))
+        onChange?()
+        Task { await connect() }
+    }
+
+    func prepareForResume() {
+        if validationToken == nil { isValidating = false }
+    }
+
+    func suspendPresentation() {
+        // Keep transport and renderer; make pending presentation proofs invalid.
+        isValidating = true
+        validationToken = nil
+        validationTask?.cancel()
+        validationDeadlineTask?.cancel()
+        invalidateSnapshotRefresh()
+        onChange?()
+    }
+
+    private func invalidateSnapshotRefresh() {
+        snapshotEpoch &+= 1
+        snapshotRefreshTask?.cancel()
+        snapshotRefreshTask = nil
+        snapshotRefreshToken = nil
+        refreshRequested = false
+    }
 
     var onChange: (() -> Void)?
     var onAgents: (([AgentInfo], Bool) -> Void)?
@@ -52,6 +124,7 @@ final class MobileDeviceSession {
 
     func connect() async {
         guard !Task.isCancelled else { return }
+        if case .connected = state { resume(); return }
         guard case .connecting = state else {
             let token = UUID()
             connectToken = token
@@ -59,8 +132,10 @@ final class MobileDeviceSession {
             onConnectionLost?()
             state = .connecting
             let oldTransport = self.transport
-            self.transport = nil
+            // Retain the old renderer's transport identity while restoring.
+            // It is input-disabled and cannot acknowledge cached content.
             eventTask?.cancel()
+            invalidateSnapshotRefresh()
             onChange?()
             await oldTransport?.close()
             guard connectToken == token, !Task.isCancelled else { return }
@@ -83,8 +158,12 @@ final class MobileDeviceSession {
                     return
                 }
                 self.transport = transport
+                isValidating = true
                 state = .connected(version: pong.version)
-                await refresh()
+                let refreshed = await refresh()
+                guard connectToken == token, !Task.isCancelled else { return }
+                guard refreshed else { throw HerdrError.connectionFailed("snapshot unavailable") }
+                isValidating = false
                 if connectToken == token { startEventPump() }
             } catch {
                 await openingTransport?.close()
@@ -112,6 +191,10 @@ final class MobileDeviceSession {
 
     private func invalidateConnection() -> MobileTransport? {
         onConnectionLost?()
+        validationToken = nil
+        validationTask?.cancel()
+        validationDeadlineTask?.cancel()
+        isValidating = false
         connectToken = nil
         eventTask?.cancel()
         eventTask = nil
@@ -157,12 +240,14 @@ final class MobileDeviceSession {
     private func performRefresh() async -> Bool {
         guard let transport else { return false }
         let generation = statusGeneration
+        let connection = connectionID
+        let epoch = snapshotEpoch
         struct Envelope: Codable { let snapshot: SessionSnapshot }
         do {
             let fetched = try await transport.request(
                 method: "session.snapshot", as: Envelope.self
             ).snapshot
-            guard !Task.isCancelled, self.transport === transport else {
+            guard !Task.isCancelled, self.transport === transport, self.connectionID == connection, self.snapshotEpoch == epoch else {
                 return false
             }
             guard statusGeneration == generation else {
@@ -349,9 +434,9 @@ final class MobileAppModel {
             self.revision += 1
             if self.selectedDeviceID == deviceID { self.reconcileNavigation() }
         }
-        session.onAgents = { [weak self] agents, authoritative in
+        session.onAgents = { [weak self, weak session] agents, authoritative in
             self?.agentReadState.apply(agents: agents, deviceID: deviceID, authoritative: authoritative,
-                                      foreground: UIApplication.shared.applicationState == .active)
+                                      foreground: UIApplication.shared.applicationState == .active && session?.actionsReady == true)
             self?.revision += 1
         }
         session.onConnectionLost = { [weak self] in
@@ -393,6 +478,22 @@ final class MobileAppModel {
         }
     }
 
+    func resumeSelected(validationTimeout: Duration = .seconds(3)) {
+        guard let session = selectedSession, connectionTaskToken == nil else { return }
+        if case .connected = session.state {
+            // suspendPresentation has gated proof/input but did not start validation.
+            session.prepareForResume()
+            session.resume(timeout: validationTimeout)
+        } else { connectSelected() }
+    }
+
+    func suspendSelected() { selectedSession?.suspendPresentation() }
+
+    var selectedTransportReady: Bool {
+        _ = revision
+        return selectedSession?.actionsReady == true
+    }
+
     private func cancelSelectedConnection() {
         guard let id = selectedDeviceID else { return }
         let opening = connectionTask
@@ -432,6 +533,7 @@ final class MobileAppModel {
         previousConnection.name = validated.name
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
         if connectionChanged {
+            agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
             if selectedDeviceID == device.id { cancelSelectedConnection() }

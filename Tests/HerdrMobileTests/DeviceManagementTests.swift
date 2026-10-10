@@ -5,6 +5,78 @@ import HerdrSSH
 
 @MainActor
 final class DeviceManagementTests: XCTestCase {
+    func testReturningToHealthyConnectionKeepsTransportAndSnapshot() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.save([MobileDevice(name: "Daily", host: "host.example", username: "alice")])
+        let remote = FixtureTransport(label: "Current workspace")
+        let model = MobileAppModel(store: store, connector: { _ in remote })
+        model.connectSelected()
+        try await eventually { model.spaces.first?.label == "Current workspace" }
+        let session = try XCTUnwrap(model.selectedSession)
+        let identity = session.connectionID
+        model.connectSelected()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(session.connectionID, identity, "A healthy foreground return must not replace the SSH session")
+        let closed = await remote.isClosed
+        XCTAssertFalse(closed, "Validation must retain the current remote transport")
+        XCTAssertEqual(model.spaces.first?.label, "Current workspace")
+        await session.disconnect()
+    }
+
+    func testConnectionEditClearsOldHostUnreadWhileNameOnlyEditPreservesIt() async throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let store = MobileDeviceStore(defaults: defaults)
+        let device = MobileDevice(name: "Daily", host: "old.example", username: "alice")
+        store.save([device])
+        let unread = AgentReadState(defaults: defaults)
+        let model = MobileAppModel(store: store, readState: unread)
+        func agent(_ status: String) throws -> AgentInfo {
+            try JSONDecoder().decode(AgentInfo.self, from: Data("{\"workspace_id\":\"s\",\"tab_id\":\"t\",\"pane_id\":\"same-pane\",\"agent\":\"codex\",\"agent_status\":\"\(status)\"}".utf8))
+        }
+        unread.apply(agents: [try agent("working")], deviceID: device.id)
+        unread.apply(agents: [try agent("done")], deviceID: device.id)
+        let key = AgentUnreadKey(deviceID: device.id, paneID: "same-pane")
+        XCTAssertTrue(unread.unread.contains(key))
+        var edited = device
+        edited.name = "New display name"
+        try model.updateDevice(edited)
+        XCTAssertTrue(unread.unread.contains(key), "A name edit keeps completion reminders")
+        // Avoid opening a network connection: this public operation allows no active device.
+        model.selectedDeviceID = nil
+        edited.host = "new.example"
+        try model.updateDevice(edited)
+        XCTAssertFalse(unread.unread.contains(key), "Reused remote pane IDs on a new host cannot inherit the old host's unread result")
+        XCTAssertFalse(AgentReadState(defaults: defaults).unread.contains(key))
+    }
+
+    func testForegroundValidationDeadlineReplacesUnresponsiveTransportAndRejectsItsLateReply() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let device = MobileDevice(name: "Daily", host: "host.example", username: "alice")
+        store.save([device])
+        let first = FixtureTransport(label: "Prior snapshot")
+        let next = FixtureTransport(label: "Recovered snapshot")
+        let gate = RemoteReplyGate()
+        let boundary = ForegroundConnector(first: first, next: next)
+        let model = MobileAppModel(store: store, connector: { _ in await boundary.open() })
+        model.connectSelected()
+        try await eventually { model.spaces.first?.label == "Prior snapshot" }
+        model.selectedSpaceID = "Prior snapshot"
+        let priorID = model.selectedSession?.connectionID
+        await first.holdSnapshot(using: gate)
+        model.suspendSelected()
+        model.resumeSelected(validationTimeout: .milliseconds(80))
+        try await eventually { await gate.isWaiting }
+        XCTAssertFalse(model.selectedTransportReady)
+        XCTAssertEqual(model.spaces.first?.label, "Prior snapshot", "Recovery keeps the previous context")
+        try await eventually { model.spaces.first?.label == "Recovered snapshot" }
+        XCTAssertNotEqual(model.selectedSession?.connectionID, priorID)
+        await gate.release()
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(model.spaces.first?.label, "Recovered snapshot", "Late prior-generation snapshot cannot replace the new transport's data")
+        XCTAssertTrue(model.selectedTransportReady)
+        await model.selectedSession?.disconnect()
+    }
+
     func testRapidReturnToDeviceWaitsForItsSharedBridgeTeardown() async throws {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let first = MobileDevice(kind: .tailcat, name: "Bridge device")
@@ -319,5 +391,16 @@ private func eventually(_ condition: () async -> Bool) async throws {
             throw CancellationError()
         }
         try await Task.sleep(for: .milliseconds(10))
+    }
+}
+
+private actor ForegroundConnector {
+    let first: MobileTransport
+    let next: MobileTransport
+    private var opened = false
+    init(first: MobileTransport, next: MobileTransport) { self.first = first; self.next = next }
+    func open() -> MobileTransport {
+        if !opened { opened = true; return first }
+        return next
     }
 }

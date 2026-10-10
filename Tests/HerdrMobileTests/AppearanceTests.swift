@@ -7,6 +7,68 @@ import HerdrSSH
 
 @MainActor
 final class AppearanceTests: XCTestCase {
+    func testObsoleteAttachFailureCannotReplaceNewTransportState() async throws {
+        let first = DelayedAttachTransport()
+        let replacement = RecoveryTransport()
+        let session = MobileAttachSession(transport: first, target: .agent(paneID: "pane"), paneID: "pane")
+        let view = UITerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 500))
+        view.controller = MobileGhosttyRuntime.controller
+        view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController()
+        controller.view = view
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; session.stop() }
+        session.start()
+        try await settle()
+        let waiting = await first.isWaiting
+        XCTAssertTrue(waiting, "The external prior attach is held while its actual terminal reports a viewport")
+        session.replaceTransport(replacement)
+        try await settle()
+        let replacementStatus = session.status
+        if case .ended = replacementStatus {} else { XCTFail("Replacement attach reached its own terminal state") }
+        await first.finishObsoleteAttempt()
+        try await settle()
+        XCTAssertEqual(session.status, replacementStatus, "An obsolete attach callback must not overwrite the replacement status")
+        XCTAssertTrue(session.transport === replacement)
+    }
+
+    func testValidationAndReplacementKeepActualTerminalFrameAndDraft() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let device = MobileDevice(name: "Daily", host: "host.example", username: "alice")
+        store.save([device])
+        let boundary = RecoveryBoundary()
+        let model = MobileAppModel(store: store, connector: { _ in await boundary.open() })
+        let host = UIHostingController(rootView: MobileWorkspaceView(model: model).environment(AppLanguagePreference.shared).environmentObject(AppAppearancePreference(defaults: UserDefaults(suiteName: UUID().uuidString)!)))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        try await settle()
+        let view = try XCTUnwrap(findTerminal(in: host.view))
+        guard case .inMemory(let backend) = view.configuration.backend else { return XCTFail("Real Ghostty expected") }
+        backend.receive(Data("保留已有终端画面 RECOVERY_FRAME\r\n".utf8))
+        model.setAgentDraft("retained unsent prompt", paneID: "recovery-pane", deviceID: device.id)
+        try await settle()
+        await boundary.first.holdValidation()
+        model.connectSelected()
+        try await settle()
+        XCTAssertTrue(findTerminal(in: host.view) === view, "Validation keeps the current actual terminal view")
+        XCTAssertTrue(try XCTUnwrap(backend.readViewportText()).contains("RECOVERY_FRAME"))
+        XCTAssertEqual(model.agentDraft(paneID: "recovery-pane", deviceID: device.id), "retained unsent prompt")
+        await boundary.first.releaseValidation(failed: true)
+        try await settle()
+        try await settle()
+        XCTAssertTrue(findTerminal(in: host.view) === view, "Replacement transport reuses the actual renderer")
+        XCTAssertTrue(try XCTUnwrap(backend.readViewportText()).contains("RECOVERY_FRAME"))
+        XCTAssertEqual(model.selectedAgentPaneID, "recovery-pane")
+        await model.selectedSession?.disconnect()
+    }
+
     func testLiveTerminalChangesModeWithoutReplacingSurfaceOrOpeningAnotherAttach() async throws {
         let preference = AppAppearancePreference(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         preference.mode = .dark
@@ -90,6 +152,53 @@ private actor AppearanceTransport: MobileTransport {
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
         opens += 1
         throw MobileTransportError.tailcatTerminalUnsupported
+    }
+    func close() async {}
+}
+
+private actor RecoveryBoundary {
+    let first = RecoveryTransport()
+    private var opened = false
+    func open() -> MobileTransport {
+        if !opened { opened = true; return first }
+        return RecoveryTransport()
+    }
+}
+
+private actor RecoveryTransport: MobileTransport {
+    private var shouldHold = false
+    private var pending: CheckedContinuation<JSONValue, Error>?
+    func holdValidation() { shouldHold = true }
+    func releaseValidation(failed: Bool) {
+        shouldHold = false
+        if failed { pending?.resume(throwing: CancellationError()) }
+        else { pending?.resume(returning: Self.snapshot) }
+        pending = nil
+    }
+    func request(method: String, params: JSONValue) async throws -> JSONValue {
+        if method == "ping" { return .object(["version": .string("fixture"), "protocol": .number(22)]) }
+        if shouldHold { return try await withCheckedThrowingContinuation { pending = $0 } }
+        return Self.snapshot
+    }
+    nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
+    func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel { throw MobileTransportError.tailcatTerminalUnsupported }
+    func close() async {}
+    static var snapshot: JSONValue { try! JSONDecoder().decode(JSONValue.self, from: Data("""
+    {"snapshot":{"focused_workspace_id":"recovery-space","focused_pane_id":"recovery-pane","workspaces":[{"workspace_id":"recovery-space","number":1,"label":"Daily","active_tab_id":"recovery-tab"}],"tabs":[{"tab_id":"recovery-tab","workspace_id":"recovery-space","number":1,"label":"Task"}],"agents":[{"workspace_id":"recovery-space","tab_id":"recovery-tab","pane_id":"recovery-pane","agent":"codex","agent_status":"working","name":"Task"}]}}
+    """.utf8)) }
+}
+
+private actor DelayedAttachTransport: MobileTransport {
+    private var pending: CheckedContinuation<SSHPTYChannel, Error>?
+    var isWaiting: Bool { pending != nil }
+    func finishObsoleteAttempt() {
+        pending?.resume(throwing: NSError(domain: "Obsolete attach", code: 1, userInfo: [NSLocalizedDescriptionKey: "OBSOLETE_ATTACH_FAILURE"]))
+        pending = nil
+    }
+    func request(method: String, params: JSONValue) async throws -> JSONValue { .null }
+    nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
+    func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
+        try await withCheckedThrowingContinuation { pending = $0 }
     }
     func close() async {}
 }
