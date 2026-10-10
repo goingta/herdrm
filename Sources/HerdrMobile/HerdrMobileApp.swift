@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct HerdrMobileApp: App {
     @State private var model = MobileAppModel()
+    @State private var navigation = MobileWorkspaceNavigation()
     @State private var languagePreference = AppLanguagePreference.shared
     @StateObject private var appearance = AppAppearancePreference()
     @Environment(\.scenePhase) private var scenePhase
@@ -21,7 +22,7 @@ struct HerdrMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MobileRootView(model: model)
+            MobileWorkspaceView(model: model, navigation: navigation)
                 .environment(languagePreference)
                 .environment(\.locale, languagePreference.locale)
                 .environmentObject(appearance)

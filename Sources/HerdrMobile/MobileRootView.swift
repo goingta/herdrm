@@ -36,6 +36,7 @@ struct MobileRootView: View {
                     target: .agent(paneID: agent.paneID),
                     paneID: agent.paneID,
                     title: agent.title(tabLabel: model.tabLabel(for: agent)),
+                    composerDraft: composerDraft(paneID: agent.paneID),
                     readState: model.agentReadState,
                     unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
                     onReadStateChanged: { model.terminalReadStateChanged() }
@@ -71,6 +72,14 @@ struct MobileRootView: View {
         .task {
             if model.selectedDeviceID != nil { model.connectSelected() }
         }
+    }
+
+    private func composerDraft(paneID: String) -> Binding<String> {
+        guard let deviceID = model.selectedDeviceID else { return .constant("") }
+        return Binding(
+            get: { model.agentDraft(paneID: paneID, deviceID: deviceID) },
+            set: { model.setAgentDraft($0, paneID: paneID, deviceID: deviceID) }
+        )
     }
 }
 

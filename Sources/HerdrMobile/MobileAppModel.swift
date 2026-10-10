@@ -284,6 +284,7 @@ final class MobileAppModel {
     var selectedAgentPaneID: String?
     var showAddDevice = false
     var editingDevice: MobileDevice?
+    private var agentDrafts: [AgentUnreadKey: String] = [:]
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
@@ -294,6 +295,15 @@ final class MobileAppModel {
     private var connectionTask: Task<Void, Never>?
     private var connectionTaskToken: UUID?
     private var closingTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
+
+    func agentDraft(paneID: String, deviceID: UUID) -> String {
+        agentDrafts[AgentUnreadKey(deviceID: deviceID, paneID: paneID)] ?? ""
+    }
+
+    func setAgentDraft(_ text: String, paneID: String, deviceID: UUID) {
+        let key = AgentUnreadKey(deviceID: deviceID, paneID: paneID)
+        agentDrafts[key] = text.isEmpty ? nil : text
+    }
 
     init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil, connector: @escaping MobileTransportConnector = { device in
         switch device.kind {
@@ -399,6 +409,7 @@ final class MobileAppModel {
         previousConnection.name = validated.name
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
         if connectionChanged {
+            agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
             obsolete?.onChange = nil
@@ -544,6 +555,7 @@ final class MobileAppModel {
         }
         agentReadState.removeDevice(device.id)
         devices.removeAll { $0.id == device.id }
+        agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
         }) {
