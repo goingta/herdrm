@@ -40,6 +40,9 @@ targets:
         buildPhase: resources
         excludes:
           - Localizable.xcstrings
+          - AppIcon/MobileAssets.xcassets
+          - AppIcon/generate-mobile-icon.swift
+          - AppIcon/README.md
       - path: Resources/Localizable.xcstrings
     dependencies:
       - package: HerdrKit
@@ -100,6 +103,8 @@ targets:
     sources:
       - Sources/HerdrMobile
       - Sources/HerdrShared
+      - path: Resources/AppIcon/MobileAssets.xcassets
+        buildPhase: resources
     dependencies:
       - package: HerdrKit
       - package: HerdrSSH
@@ -132,6 +137,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.ios
         PRODUCT_NAME: HerdrMobile
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
