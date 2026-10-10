@@ -43,6 +43,8 @@ targets:
           - AppIcon/MobileAssets.xcassets
           - AppIcon/generate-mobile-icon.swift
           - AppIcon/README.md
+          - BrandIcons.xcassets
+          - generate-brand-icons.swift
       - path: Resources/Localizable.xcstrings
     dependencies:
       - package: HerdrKit
@@ -106,6 +108,8 @@ targets:
       - path: Resources/Localizable.xcstrings
       - path: Resources/AppIcon/MobileAssets.xcassets
         buildPhase: resources
+      - path: Resources/BrandIcons.xcassets
+        buildPhase: resources
     dependencies:
       - package: HerdrKit
       - package: HerdrSSH
@@ -148,6 +152,7 @@ targets:
         PRODUCT_NAME: HerdrMobile
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
         MARKETING_VERSION: "0.1.0"
@@ -194,6 +199,53 @@ targets:
         ARCHS: arm64
         EXCLUDED_ARCHS__sdk_iphonesimulator__: x86_64
 
+  HerdrNavigationHarness:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Sources/HerdrMobile
+        excludes: [HerdrMobileApp.swift, Info.plist]
+      - Sources/HerdrShared
+      - Tests/HerdrNavigationHarness
+      - path: Resources/BrandIcons.xcassets
+        buildPhase: resources
+      - path: Resources/Localizable.xcstrings
+      - path: Resources/AppIcon/MobileAssets.xcassets
+        buildPhase: resources
+    dependencies:
+      - package: HerdrKit
+      - package: HerdrSSH
+      - package: HerdrTailcat
+      - package: GhosttyTerminal
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.navigation-fixture
+        PRODUCT_NAME: NavigationHarness
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.10"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ARCHS: arm64
+        EXCLUDED_ARCHS__sdk_iphonesimulator__: x86_64
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+  HerdrNavigationUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources: [Tests/HerdrNavigationUITests]
+    dependencies:
+      - target: HerdrNavigationHarness
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.navigation-uitests
+        TEST_TARGET_NAME: HerdrNavigationHarness
+        SWIFT_VERSION: "5.10"
+        ARCHS: arm64
+        EXCLUDED_ARCHS__sdk_iphonesimulator__: x86_64
   HerdrMTests:
     type: bundle.unit-test
     platform: macOS
@@ -214,6 +266,14 @@ targets:
         CODE_SIGN_IDENTITY: "-"
 
 schemes:
+  HerdrNavigationAcceptance:
+    build:
+      targets:
+        HerdrNavigationHarness: all
+        HerdrNavigationUITests: [test]
+    test:
+      config: Debug
+      targets: [HerdrNavigationUITests]
   HerdrMobile:
     build:
       targets:

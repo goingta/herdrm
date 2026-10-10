@@ -12,6 +12,17 @@ enum MobileConnectionState: Equatable {
     case failed(String)
 }
 
+struct MobileWorkspaceTab: Identifiable {
+    let id: String
+    let label: String
+}
+
+struct MobilePaneChoice: Identifiable {
+    let id: String
+    let title: String
+    let agent: AgentInfo?
+}
+
 /// One device's live herdr view: transport + snapshot + event pump.
 @MainActor
 final class MobileDeviceSession {
@@ -282,6 +293,13 @@ final class MobileAppModel {
     var selectedDeviceID: UUID?
     var selectedSpaceID: String?
     var selectedAgentPaneID: String?
+    var selectedTabID: String?
+    private struct SpaceKey: Hashable { let deviceID: UUID; let spaceID: String }
+    private struct TabKey: Hashable { let deviceID: UUID; let spaceID: String; let tabID: String }
+    private var rememberedSpaces: [UUID: String] = [:]
+    private var rememberedTabs: [SpaceKey: String] = [:]
+    private var rememberedPanes: [TabKey: String] = [:]
+    private var knownPaneTitles: [AgentUnreadKey: String] = [:]
     var showAddDevice = false
     var editingDevice: MobileDevice?
     private var agentDrafts: [AgentUnreadKey: String] = [:]
@@ -326,7 +344,11 @@ final class MobileAppModel {
         if let existing = sessions[deviceID] { return existing }
         guard let device = devices.first(where: { $0.id == deviceID }) else { return nil }
         let session = MobileDeviceSession(device: device, connector: connector)
-        session.onChange = { [weak self] in self?.revision += 1 }
+        session.onChange = { [weak self] in
+            guard let self else { return }
+            self.revision += 1
+            if self.selectedDeviceID == deviceID { self.reconcileNavigation() }
+        }
         session.onAgents = { [weak self] agents, authoritative in
             self?.agentReadState.apply(agents: agents, deviceID: deviceID, authoritative: authoritative,
                                       foreground: UIApplication.shared.applicationState == .active)
@@ -395,6 +417,7 @@ final class MobileAppModel {
         selectedDeviceID = id
         selectedSpaceID = nil
         selectedAgentPaneID = nil
+        selectedTabID = nil
         connectSelected()
     }
 
@@ -409,6 +432,7 @@ final class MobileAppModel {
         previousConnection.name = validated.name
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
         if connectionChanged {
+            clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
@@ -422,6 +446,7 @@ final class MobileAppModel {
         if connectionChanged, selectedDeviceID == device.id {
             selectedSpaceID = nil
             selectedAgentPaneID = nil
+            selectedTabID = nil
             connectSelected()
         }
         revision += 1
@@ -554,6 +579,7 @@ final class MobileAppModel {
             Task { await TailcatBridgeManager.shared.tearDown(deviceID: device.id) }
         }
         agentReadState.removeDevice(device.id)
+        clearNavigationHistory(for: device.id)
         devices.removeAll { $0.id == device.id }
         agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
         if !saved.isTailcat, !devices.contains(where: {
@@ -566,6 +592,7 @@ final class MobileAppModel {
             selectedDeviceID = devices.first?.id
             selectedSpaceID = nil
             selectedAgentPaneID = nil
+            selectedTabID = nil
             connectSelected()
         }
     }
@@ -584,6 +611,153 @@ final class MobileAppModel {
     }
 
     func terminalReadStateChanged() { revision += 1 }
+
+    var selectedSpace: WorkspaceInfo? { spaces.first { $0.workspaceID == selectedSpaceID } }
+
+    /// Server tab order is independent of Agent status sorting.
+    var workspaceTabs: [MobileWorkspaceTab] {
+        _ = revision
+        guard let spaceID = selectedSpaceID, let snapshot = selectedSession?.snapshot else { return [] }
+        if let tabs = snapshot.tabs {
+            return tabs.enumerated().filter { $0.element.workspaceID == spaceID }
+                .sorted {
+                    let a = $0.element.number ?? Int.max, b = $1.element.number ?? Int.max
+                    return a == b ? $0.offset < $1.offset : a < b
+                }
+                .map { MobileWorkspaceTab(id: $0.element.tabID, label: $0.element.label) }
+        }
+        // Older servers may omit tabs. Preserve actual pane tab IDs and titles.
+        var result: [MobileWorkspaceTab] = []
+        for agent in snapshot.agents where agent.workspaceID == spaceID {
+            if !result.contains(where: { $0.id == agent.tabID }) {
+                result.append(MobileWorkspaceTab(id: agent.tabID, label: agent.title))
+            }
+        }
+        for pane in snapshot.ordinaryTerminalPanes where pane.workspaceID == spaceID {
+            if let id = pane.tabID, !result.contains(where: { $0.id == id }) {
+                result.append(MobileWorkspaceTab(id: id, label: terminalLabel(for: pane)))
+            }
+        }
+        return result
+    }
+
+    func paneChoices(in tabID: String) -> [MobilePaneChoice] {
+        _ = revision
+        guard let spaceID = selectedSpaceID, let snapshot = selectedSession?.snapshot else { return [] }
+        let agents = snapshot.agents.filter { $0.workspaceID == spaceID && $0.tabID == tabID }
+        let shells = snapshot.ordinaryTerminalPanes.filter { $0.workspaceID == spaceID && $0.tabID == tabID }
+        let choices = agents.map { MobilePaneChoice(id: $0.paneID, title: $0.title, agent: $0) }
+            + shells.map { MobilePaneChoice(id: $0.paneID, title: $0.terminalTitle ?? terminalLabel(for: $0), agent: nil) }
+        // Snapshot panes provide actual split order when available.
+        let order = (snapshot.panes ?? []).map(\.paneID)
+        return choices.sorted { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) }
+    }
+
+    func tabAttention(for tabID: String) -> SpaceAttention {
+        SpaceAttention.rollup(paneChoices(in: tabID).compactMap(\.agent)
+            .map { (status: $0.status, unreadDone: isUnread($0)) })
+    }
+
+    var selectedPaneTitle: String? {
+        _ = revision
+        guard let deviceID = selectedDeviceID, let paneID = selectedAgentPaneID else { return nil }
+        return knownPaneTitles[AgentUnreadKey(deviceID: deviceID, paneID: paneID)]
+    }
+
+    var hasCurrentSnapshot: Bool {
+        _ = revision
+        return selectedSession?.snapshot != nil
+    }
+
+    /// Only an authoritative current snapshot can declare a chosen target gone.
+    var selectedTargetUnavailable: Bool {
+        guard hasCurrentSnapshot, case .connected = selectedConnectionState else { return false }
+        if let spaceID = selectedSpaceID, !spaces.contains(where: { $0.workspaceID == spaceID }) { return true }
+        if let tabID = selectedTabID {
+            if !workspaceTabs.contains(where: { $0.id == tabID }) { return true }
+            if let paneID = selectedAgentPaneID, !paneChoices(in: tabID).contains(where: { $0.id == paneID }) { return true }
+        }
+        return false
+    }
+
+    func selectSpace(_ id: String) {
+        guard spaces.contains(where: { $0.workspaceID == id }), let deviceID = selectedDeviceID else { return }
+        selectedSpaceID = id
+        rememberedSpaces[deviceID] = id
+        selectedTabID = nil
+        selectedAgentPaneID = nil
+        reconcileNavigation()
+    }
+
+    func selectTab(_ id: String) {
+        guard workspaceTabs.contains(where: { $0.id == id }),
+              let deviceID = selectedDeviceID, let spaceID = selectedSpaceID else { return }
+        selectedTabID = id
+        rememberedTabs[SpaceKey(deviceID: deviceID, spaceID: spaceID)] = id
+        selectedAgentPaneID = nil
+        reconcileNavigation()
+    }
+
+    func selectPane(_ id: String) {
+        guard let tabID = selectedTabID, paneChoices(in: tabID).contains(where: { $0.id == id }),
+              let deviceID = selectedDeviceID, let spaceID = selectedSpaceID else { return }
+        selectedAgentPaneID = id
+        rememberedPanes[TabKey(deviceID: deviceID, spaceID: spaceID, tabID: tabID)] = id
+        rememberPaneTitle()
+    }
+
+    private func rememberPaneTitle() {
+        guard let deviceID = selectedDeviceID, let tabID = selectedTabID,
+              let choice = paneChoices(in: tabID).first(where: { $0.id == selectedAgentPaneID }) else { return }
+        knownPaneTitles[AgentUnreadKey(deviceID: deviceID, paneID: choice.id)] = choice.title
+    }
+
+    private func clearNavigationHistory(for deviceID: UUID) {
+        rememberedSpaces.removeValue(forKey: deviceID)
+        rememberedTabs = rememberedTabs.filter { $0.key.deviceID != deviceID }
+        rememberedPanes = rememberedPanes.filter { $0.key.deviceID != deviceID }
+        knownPaneTitles = knownPaneTitles.filter { $0.key.deviceID != deviceID }
+    }
+
+    private func reconcileNavigation() {
+        guard case .connected = selectedConnectionState, let deviceID = selectedDeviceID,
+              let snapshot = selectedSession?.snapshot else { return }
+        // A deletion must not silently attach the phone to a different target.
+        // An explicit Space/Tab/pane choice clears or replaces these identities.
+        if let spaceID = selectedSpaceID, !snapshot.workspaces.contains(where: { $0.workspaceID == spaceID }) { return }
+        if !snapshot.workspaces.contains(where: { $0.workspaceID == selectedSpaceID }) {
+            selectedSpaceID = snapshot.workspaces.first { $0.workspaceID == rememberedSpaces[deviceID] }?.workspaceID
+                ?? snapshot.workspaces.first { $0.workspaceID == snapshot.focusedWorkspaceID }?.workspaceID
+                ?? snapshot.workspaces.first(where: { $0.focused == true })?.workspaceID
+                ?? snapshot.workspaces.first?.workspaceID
+            selectedTabID = nil
+            selectedAgentPaneID = nil
+        }
+        guard let spaceID = selectedSpaceID else { return }
+        let spaceKey = SpaceKey(deviceID: deviceID, spaceID: spaceID)
+        rememberedSpaces[deviceID] = spaceID
+        if let tabID = selectedTabID, !workspaceTabs.contains(where: { $0.id == tabID }) { return }
+        if !workspaceTabs.contains(where: { $0.id == selectedTabID }) {
+            selectedTabID = workspaceTabs.first { $0.id == rememberedTabs[spaceKey] }?.id
+                ?? workspaceTabs.first { $0.id == selectedSpace?.activeTabID }?.id
+                ?? snapshot.tabs?.first { $0.workspaceID == spaceID && $0.focused == true }?.tabID
+                ?? workspaceTabs.first?.id
+            selectedAgentPaneID = nil
+        }
+        guard let tabID = selectedTabID else { return }
+        rememberedTabs[spaceKey] = tabID
+        let tabKey = TabKey(deviceID: deviceID, spaceID: spaceID, tabID: tabID)
+        let choices = paneChoices(in: tabID)
+        if let paneID = selectedAgentPaneID, !choices.contains(where: { $0.id == paneID }) { return }
+        if !choices.contains(where: { $0.id == selectedAgentPaneID }) {
+            selectedAgentPaneID = choices.first { $0.id == rememberedPanes[tabKey] }?.id
+                ?? choices.first { $0.id == snapshot.focusedPaneID }?.id
+                ?? choices.first { $0.agent?.focused == true }?.id
+                ?? choices.first?.id
+        }
+        if let paneID = selectedAgentPaneID { rememberedPanes[tabKey] = paneID }
+        rememberPaneTitle()
+    }
 
     // MARK: - Derived lists (mirror the Mac sidebar)
 
@@ -623,7 +797,7 @@ final class MobileAppModel {
 
     var selectedAgent: AgentInfo? {
         _ = revision
-        return selectedSession?.snapshot?.agents.first { $0.paneID == selectedAgentPaneID }
+        return agents.first { $0.paneID == selectedAgentPaneID && $0.tabID == selectedTabID }
     }
 
     /// Bare herdr terminal panes in the selected space (nil = all).
@@ -639,7 +813,7 @@ final class MobileAppModel {
 
     var selectedTerminalPane: PaneInfo? {
         _ = revision
-        return terminalPanes.first { $0.paneID == selectedAgentPaneID }
+        return terminalPanes.first { $0.paneID == selectedAgentPaneID && $0.tabID == selectedTabID }
     }
 
     func terminalLabel(for pane: PaneInfo) -> String {

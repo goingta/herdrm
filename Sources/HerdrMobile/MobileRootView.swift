@@ -1,317 +1,281 @@
 import HerdrKit
 import SwiftUI
 
-/// iPhone: a navigation stack (lists → terminal). iPad: a split view whose
-/// sidebar mirrors the Mac app — Spaces, Agents, and a device switcher footer.
+/// One Space fills the phone. The native left drawer starts collapsed;
+/// server tabs and a split-pane picker choose one existing terminal at a time.
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
-    @State private var showSettings = false
+    @State private var drawerShown = false
 
     var body: some View {
-        NavigationSplitView {
-            SidebarListView(model: model)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape")
+        NavigationStack {
+            ZStack(alignment: .leading) {
+                VStack(spacing: 0) {
+                    topBar
+                    workspaceHeader
+                    if !model.workspaceTabs.isEmpty { tabStrip }
+                    terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .background(Theme.contentBackground)
+                .accessibilityHidden(drawerShown)
+                if drawerShown {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Button { drawerShown = false } label: { Color.black.opacity(0.28) }
+                                .buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Close Sidebar"))
+                                .accessibilityIdentifier("spaces.drawer.close")
+                            drawer.frame(width: min(340, proxy.size.width * 0.86))
                         }
-                        .accessibilityLabel("Settings")
                     }
                 }
-        } detail: {
-            if let device = model.selectedDevice, device.isTailcat,
-               model.selectedAgentPaneID != nil {
-                // tailcat carries herdr's control plane only — no shell, no
-                // PTY channel — so there is no terminal byte stream to attach
-                // to on iOS. Prompting stays available from the agent's row.
-                ContentUnavailableView(
-                    AppLocalization.string("No Terminal over Tailcat"),
-                    systemImage: "terminal",
-                    description: Text(AppLocalization.string("This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."))
-                )
-            } else if let agent = model.selectedAgent,
-               let transport = model.selectedSession?.transport {
-                MobileTerminalScreen(
-                    transport: transport,
-                    target: .agent(paneID: agent.paneID),
-                    paneID: agent.paneID,
-                    title: agent.title(tabLabel: model.tabLabel(for: agent)),
-                    composerDraft: composerDraft(paneID: agent.paneID),
-                    readState: model.agentReadState,
-                    unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
-                    onReadStateChanged: { model.terminalReadStateChanged() }
-                )
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(agent.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
-            } else if let pane = model.selectedTerminalPane,
-                      let terminalID = pane.terminalID,
-                      let transport = model.selectedSession?.transport {
-                MobileTerminalScreen(
-                    transport: transport,
-                    target: .terminal(terminalID: terminalID),
-                    paneID: pane.paneID,
-                    title: model.terminalLabel(for: pane)
-                )
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
-            } else {
-                ContentUnavailableView(
-                    AppLocalization.string("No Agent Selected"),
-                    systemImage: "terminal",
-                    description: Text(AppLocalization.string("Pick an agent to attach to its terminal."))
-                )
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .sheet(isPresented: $model.showAddDevice) {
-            DeviceEditorSheet(model: model)
-        }
-        .sheet(isPresented: $showSettings) {
-            MobileSettingsView()
-        }
-        .sheet(item: $model.editingDevice) { device in
-            DeviceEditorSheet(model: model, device: device)
-        }
-        .task {
-            if model.selectedDeviceID != nil { model.connectSelected() }
-        }
+        .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
+        .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
+        .task { if model.selectedDeviceID != nil { model.connectSelected() } }
     }
 
-    private func composerDraft(paneID: String) -> Binding<String> {
-        guard let deviceID = model.selectedDeviceID else { return .constant("") }
-        return Binding(
-            get: { model.agentDraft(paneID: paneID, deviceID: deviceID) },
-            set: { model.setAgentDraft($0, paneID: paneID, deviceID: deviceID) }
-        )
-    }
-}
-
-private struct SidebarListView: View {
-    @Bindable var model: MobileAppModel
-
-    var body: some View {
-        List(selection: $model.selectedAgentPaneID) {
-            if model.devices.isEmpty {
-                ContentUnavailableView {
-                    Label(AppLocalization.string("No Devices"), systemImage: "desktopcomputer")
-                } description: {
-                    Text(AppLocalization.string("Add a development machine running herdr to get started."))
-                } actions: {
-                    Button(AppLocalization.string("Add Device")) { model.showAddDevice = true }
-                        .buttonStyle(.borderedProminent)
-                }
-                .listRowSeparator(.hidden)
-            } else {
-                connectionSection
-                spacesSection
-                agentsSection
-                terminalsSection
-            }
-        }
-        .listStyle(.sidebar)
-        .navigationTitle("herdrm")
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                DeviceSwitcherMenu(model: model)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    model.showAddDevice = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityIdentifier("device.add")
-            }
-        }
-        .refreshable {
-            await model.selectedSession?.refresh()
-        }
-    }
-
-    @ViewBuilder
-    private var connectionSection: some View {
-        if model.selectedSession != nil {
-            switch model.selectedConnectionState {
-            case .idle, .connecting:
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text(AppLocalization.string("Connecting…"))
-                        .foregroundStyle(.secondary)
-                }
-                .listRowSeparator(.hidden)
-            case .failed(let reason):
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(reason)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button(AppLocalization.string("Reconnect")) { model.connectSelected() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                .listRowSeparator(.hidden)
-            case .connected:
-                EmptyView()
-            }
-        }
-    }
-
-    private var spacesSection: some View {
-        Section(AppLocalization.string("Spaces")) {
-            Button {
-                model.selectedSpaceID = nil
-            } label: {
-                SpaceRow(
-                    label: AppLocalization.string("All Spaces"),
-                    systemImage: "square.grid.2x2",
-                    count: model.spaces.count,
-                    selected: model.selectedSpaceID == nil
-                )
+    // A native custom bar preserves a real 44pt button boundary even on
+    // system versions whose navigation-bar glass controls report 36pt frames.
+    private var topBar: some View {
+        HStack(spacing: 4) {
+            Button { drawerShown.toggle() } label: {
+                Image(systemName: "sidebar.left").font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            ForEach(model.spaces) { space in
-                Button {
-                    model.selectedSpaceID = space.workspaceID
-                } label: {
-                    SpaceRow(
-                        label: space.label,
-                        systemImage: "folder",
-                        count: nil,
-                        selected: model.selectedSpaceID == space.workspaceID
-                    )
-                }
-                .buttonStyle(.plain)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(AppLocalization.string("Spaces"))
+            .accessibilityIdentifier("spaces.drawer")
+            DeviceSwitcherMenu(model: model).buttonStyle(.plain)
+            Spacer(minLength: 4)
+            Text("herdrm").font(.headline).foregroundStyle(Theme.text)
+            Spacer(minLength: 4)
+            Button { model.showAddDevice = true } label: {
+                Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(AppLocalization.string("Add Device"))
+            .accessibilityIdentifier("device.add")
+        }
+        .foregroundStyle(Theme.accent)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(Theme.statusBarBackground)
+    }
+
+    private var workspaceHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.selectedSpace?.label ?? model.selectedDevice?.name ?? "herdrm")
+                .font(.headline).foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("workspace.title")
+            if let device = model.selectedDevice {
+                Text(device.name).font(.caption).foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Theme.statusBarBackground)
+    }
+
+    private var drawer: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("herdrm").font(.headline)
+                    DeviceSwitcherMenu(model: model).buttonStyle(.plain)
+                    Spacer()
+                    Button { drawerShown = false } label: {
+                        Image(systemName: "xmark").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel(AppLocalization.string("Close Sidebar"))
+                }
+                if let device = model.selectedDevice {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(device.name, systemImage: "desktopcomputer").font(.subheadline.weight(.semibold))
+                        if !device.isTailcat {
+                            Text("\(device.username)@\(device.host):\(device.port)")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
+                        Label(connectionLabel, systemImage: connectionSymbol)
+                            .font(.caption).foregroundStyle(connectionColor)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    Divider().overlay(Theme.hairline)
+                }
+                Text(AppLocalization.string("Spaces")).font(.caption.weight(.semibold)).foregroundStyle(Theme.textTertiary)
+                ForEach(model.spaces) { space in
+                    Button {
+                        model.selectSpace(space.workspaceID)
+                        drawerShown = false
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "folder").foregroundStyle(Theme.accent)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(space.label).font(.body).foregroundStyle(Theme.text)
+                                Text("#\(space.number)").font(.caption).foregroundStyle(Theme.textSecondary)
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 4)
+                            SpaceAttentionGlyph(attention: model.attention(for: space.workspaceID))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(model.selectedSpaceID == space.workspaceID ? Theme.itemWashSelected : .clear,
+                                    in: RoundedRectangle(cornerRadius: VisualMetrics.controlRadius))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("space.select.\(space.workspaceID)")
+                    .accessibilityAddTraits(model.selectedSpaceID == space.workspaceID ? [.isSelected] : [])
+                }
+                if model.spaces.isEmpty { Text(connectionLabel).font(.callout).foregroundStyle(Theme.textSecondary) }
+            }
+            .padding(14)
+        }
+        .background(Theme.statusBarBackground)
+        .overlay(alignment: .trailing) { Rectangle().fill(Theme.sidebarBorder).frame(width: 1) }
+        .accessibilityIdentifier("spaces.sidebar")
+    }
+
+    private var tabStrip: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(model.workspaceTabs) { tab in
+                        Button { model.selectTab(tab.id) } label: {
+                            HStack(spacing: 6) {
+                                if let kind = model.paneChoices(in: tab.id).compactMap(\.agent).first?.agent,
+                                   let resource = BrandIconLoader.agentIcon(for: kind) {
+                                    BrandIcon(resource: resource, size: 18)
+                                } else {
+                                    Image(systemName: "terminal")
+                                }
+                                SpaceAttentionGlyph(attention: model.tabAttention(for: tab.id))
+                                Text(tab.label).font(.subheadline.weight(model.selectedTabID == tab.id ? .semibold : .regular))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .foregroundStyle(model.selectedTabID == tab.id ? Theme.accent : Theme.textSecondary)
+                            .padding(.horizontal, 12).frame(minHeight: 44)
+                            .background(model.selectedTabID == tab.id ? Theme.accentWash : .clear,
+                                        in: RoundedRectangle(cornerRadius: VisualMetrics.controlRadius))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("workspace.tab.\(tab.id)")
+                        .accessibilityValue(model.paneChoices(in: tab.id).compactMap(\.agent).map {
+                            agentStatusDescription($0.status, unread: model.isUnread($0))
+                        }.joined(separator: ", "))
+                        .accessibilityAddTraits(model.selectedTabID == tab.id ? [.isSelected] : [])
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 4)
+            }
+            .scrollIndicators(.hidden)
+            if let tabID = model.selectedTabID, !model.paneChoices(in: tabID).isEmpty,
+               model.paneChoices(in: tabID).count > 1 || model.selectedTargetUnavailable {
+                panePicker(tabID: tabID)
+            }
+            Divider().overlay(Theme.hairline)
+        }
+        .background(Theme.statusBarBackground)
+    }
+
+    private func panePicker(tabID: String) -> some View {
+        Menu {
+            ForEach(Array(model.paneChoices(in: tabID).enumerated()), id: \.element.id) { index, pane in
+                Button { model.selectPane(pane.id) } label: {
+                    Label("\(index + 1). \(pane.title) · \(pane.agent?.agent ?? AppLocalization.string("Terminal"))", systemImage: pane.id == model.selectedAgentPaneID ? "checkmark" : "terminal")
+                }
+                .accessibilityIdentifier("workspace.pane.\(pane.id)")
+                .accessibilityValue(pane.agent.map { agentStatusDescription($0.status, unread: model.isUnread($0)) } ?? AppLocalization.string("Terminal"))
+                .accessibilityAddTraits(pane.id == model.selectedAgentPaneID ? [.isSelected] : [])
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.split.2x1")
+                Text(model.selectedPaneTitle ?? AppLocalization.string("Terminal"))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.down")
+            }
+            .font(.caption).foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 14).frame(minHeight: 44)
+        }
+        .accessibilityLabel(AppLocalization.string("Switch Pane"))
+        .accessibilityIdentifier("workspace.panes")
     }
 
     @ViewBuilder
-    private var terminalsSection: some View {
-        if !model.terminalPanes.isEmpty {
-            Section(AppLocalization.string("Terminals")) {
-                ForEach(model.terminalPanes) { pane in
-                    NavigationLink(value: pane.paneID) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "terminal")
-                                .foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(model.terminalLabel(for: pane))
-                                    .lineLimit(1)
-                                Text(model.spaceName(for: pane.workspaceID))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
+    private var terminalDetail: some View {
+        if model.selectedDevice == nil {
+            stateView("No Devices", detail: AppLocalization.string("Add a development machine running herdr to get started."), symbol: "desktopcomputer")
+        } else if case .failed(let reason) = model.selectedConnectionState {
+            stateView("Connection Failed", detail: reason, symbol: "exclamationmark.circle", retry: true)
+        } else if model.selectedConnectionState == .connecting || model.selectedConnectionState == .idle || !model.hasCurrentSnapshot {
+            stateView(model.selectedAgentPaneID == nil ? "Connecting…" : "Restoring Terminal…",
+                      detail: model.selectedPaneTitle ?? model.selectedSpace?.label ?? "", symbol: "arrow.triangle.2.circlepath")
+        } else if model.selectedTargetUnavailable {
+            stateView("Selected Terminal Unavailable", detail: [model.selectedPaneTitle,
+                AppLocalization.string("The selected target is no longer available. Choose another existing pane, tab, or Space.")]
+                .compactMap { $0 }.joined(separator: "\n"), symbol: "terminal")
+        } else if model.selectedDevice?.isTailcat == true, model.selectedAgentPaneID != nil {
+            stateView("No Terminal over Tailcat", detail: AppLocalization.string("This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."), symbol: "terminal")
+        } else if let agent = model.selectedAgent, let transport = model.selectedSession?.transport {
+            MobileTerminalScreen(transport: transport, target: .agent(paneID: agent.paneID), paneID: agent.paneID,
+                title: agent.title(tabLabel: model.tabLabel(for: agent)), composerDraft: composerDraft(paneID: agent.paneID),
+                readState: model.agentReadState,
+                unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
+                onReadStateChanged: { model.terminalReadStateChanged() })
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(agent.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
+        } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
+            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane))
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
+        } else if model.spaces.isEmpty {
+            stateView("No Spaces", detail: AppLocalization.string("No existing workspace is available on this development machine."), symbol: "folder")
+        } else {
+            stateView("No Existing Terminal", detail: AppLocalization.string("This tab has no available Agent or terminal. Choose another existing tab or Space."), symbol: "terminal")
         }
     }
 
-    private var agentsSection: some View {
-        Section(AppLocalization.string("Agents")) {
-            if model.agents.isEmpty {
-                Text(AppLocalization.string("No agents"))
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
+    private func stateView(_ title: String.LocalizationValue, detail: String, symbol: String, retry: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(AppLocalization.string(title), systemImage: symbol).font(.headline).foregroundStyle(Theme.text)
+            if !detail.isEmpty { Text(detail).font(.callout).foregroundStyle(Theme.textSecondary) }
+            if retry {
+                Button(AppLocalization.string("Reconnect")) { model.connectSelected() }
+                    .buttonStyle(.bordered).frame(minHeight: 44)
             }
-            ForEach(model.agents) { agent in
-                NavigationLink(value: agent.paneID) {
-                    AgentRow(
-                        agent: agent,
-                        title: agent.title(tabLabel: model.tabLabel(for: agent)),
-                        spaceName: model.spaceName(for: agent.workspaceID),
-                        unread: model.isUnread(agent)
-                    )
-                }
-            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("workspace.connection-state")
+    }
+
+    private var connectionLabel: String {
+        switch model.selectedConnectionState {
+        case .idle: AppLocalization.string("Disconnected")
+        case .connecting: AppLocalization.string("Connecting…")
+        case .connected: AppLocalization.string("Connected")
+        case .failed: AppLocalization.string("Connection Failed")
         }
     }
-}
-
-private struct SpaceRow: View {
-    let label: String
-    let systemImage: String
-    let count: Int?
-    let selected: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .foregroundStyle(selected ? Color.accentColor : .secondary)
-            Text(label)
-                .fontWeight(selected ? .semibold : .regular)
-            Spacer()
-            if let count {
-                Text("\(count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .contentShape(Rectangle())
+    private var connectionSymbol: String {
+        switch model.selectedConnectionState { case .connected: "checkmark.circle"; case .failed: "exclamationmark.circle"; default: "arrow.triangle.2.circlepath" }
     }
-}
-
-private struct AgentRow: View {
-    let agent: AgentInfo
-    let title: String
-    let spaceName: String
-    var unread = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if unread && agent.status == .done {
-                Circle().fill(.blue).frame(width: 8, height: 8).frame(width: 20)
-                    .accessibilityLabel(AppLocalization.string("Completed, unread"))
-            } else {
-                StatusGlyph(status: agent.status)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(agent.agent)
-                    Text("·")
-                    Text(spaceName)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-            Spacer()
-            if agent.status == .blocked {
-                Text(AppLocalization.string("needs input"))
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.orange.opacity(0.18), in: Capsule())
-                    .foregroundStyle(.orange)
-            }
-        }
+    private var connectionColor: Color {
+        switch model.selectedConnectionState { case .connected: Theme.success; case .failed: Theme.danger; default: Theme.textSecondary }
+    }
+    private func composerDraft(paneID: String) -> Binding<String> {
+        guard let deviceID = model.selectedDeviceID else { return .constant("") }
+        return Binding(get: { model.agentDraft(paneID: paneID, deviceID: deviceID) },
+                       set: { model.setAgentDraft($0, paneID: paneID, deviceID: deviceID) })
     }
 }
 
-/// The Mac app's status marks, phone-sized: spinner while working, exclamation
-/// when the agent waits on you, check when done, dot when idle.
-private struct StatusGlyph: View {
-    let status: AgentStatus
-
-    var body: some View {
-        switch status {
-        case .working:
-            ProgressView().controlSize(.small)
-        case .blocked:
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.orange)
-        case .done:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .idle, .unknown:
-            Image(systemName: "circle")
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// Top-left device switcher: a compact chip naming the current device, with
-/// the device list, add, and remove actions in its menu.
 private struct DeviceSwitcherMenu: View {
     @Bindable var model: MobileAppModel
     @State private var confirmRemove = false
@@ -344,15 +308,14 @@ private struct DeviceSwitcherMenu: View {
                     .accessibilityIdentifier("device.remove")
                 }
             } label: {
-                HStack(spacing: 6) {
-                    ConnectionDot(state: model.selectedConnectionState)
-                    Text(device.name)
-                        .font(.callout.weight(.medium))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "desktopcomputer")
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2)
                 }
+                .font(.system(size: 18))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel(AppLocalization.string("Development Machines"))
             }
             .accessibilityIdentifier("devices.menu")
             .confirmationDialog(AppLocalization.string("Remove this device?"), isPresented: $confirmRemove, titleVisibility: .visible) {
@@ -373,24 +336,6 @@ private struct DeviceSwitcherMenu: View {
     }
 }
 
-private struct ConnectionDot: View {
-    let state: MobileConnectionState
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
-    }
-
-    private var color: Color {
-        switch state {
-        case .connected: return .green
-        case .connecting: return .yellow
-        case .failed: return .red
-        case .idle: return .gray
-        }
-    }
-}
 
 struct DeviceEditorSheet: View {
     @Bindable var model: MobileAppModel
@@ -507,9 +452,12 @@ struct DeviceEditorSheet: View {
                     sshSections
                 }
                 if let validationError {
-                    Section { Text(validationError).foregroundStyle(.red).font(.footnote) }
+                    Section { Text(validationError).foregroundStyle(Theme.danger).font(.footnote) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.contentBackground)
+            .foregroundStyle(Theme.text)
             .navigationTitle(device == nil ? AppLocalization.string("Add Device") : AppLocalization.string("Edit Device"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -585,7 +533,7 @@ struct DeviceEditorSheet: View {
             if let error = model.tailcatClientKeyError {
                 Text(error)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Theme.danger)
             }
             Button(AppLocalization.string("Regenerate Key"), role: .destructive) {
                 confirmRegenerateClientKey = true
@@ -625,7 +573,7 @@ struct DeviceEditorSheet: View {
                 TextField(AppLocalization.string("Gateway port"), text: $gatewayPort)
                     .keyboardType(.numberPad)
                 Text(AppLocalization.string("The gateway opens a tunnel to the SSH host above. SSH still verifies and authenticates the development machine."))
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Theme.textSecondary)
             }
         }
         Section(AppLocalization.string("SSH Login")) {
@@ -643,7 +591,7 @@ struct DeviceEditorSheet: View {
                     .textContentType(.password)
                 if device?.authMethod == .password {
                     Text(AppLocalization.string("Leave blank to keep the saved password."))
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(Theme.textSecondary)
                 }
             }
         }
@@ -671,13 +619,13 @@ struct DeviceEditorSheet: View {
                 }
                 Text(AppLocalization.string("On the development machine, append this public key to ~/.ssh/authorized_keys."))
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textSecondary)
             }
         } else {
             Section {
                 Text(AppLocalization.string("The password is stored in this device's Keychain and never leaves it except to log in over SSH."))
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textSecondary)
             }
         }
     }

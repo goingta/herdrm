@@ -418,7 +418,6 @@ struct MobileTerminalScreen: View {
                 endedOverlay(reason)
             }
         }
-        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbarBackground(terminalBackground, for: .navigationBar)
@@ -449,25 +448,27 @@ struct MobileTerminalScreen: View {
     }
 
     private var keyBar: some View {
-        HStack(spacing: 8) {
+        ScrollView(.horizontal) {
+          HStack(spacing: 8) {
             KeyChip("esc", accessibilityLabel: AppLocalization.string("Escape")) { session.sendKeys(["esc"]) }
             KeyChip("tab", accessibilityLabel: AppLocalization.string("Tab")) { session.sendKeys(["tab"]) }
             KeyChip("↑", accessibilityLabel: AppLocalization.string("Move Up")) { session.sendKeys(["up"]) }
             KeyChip("↓", accessibilityLabel: AppLocalization.string("Move Down")) { session.sendKeys(["down"]) }
             KeyChip("⏎", accessibilityLabel: AppLocalization.string("Enter")) { session.sendKeys(["enter"]) }
             KeyChip("^C", accessibilityLabel: AppLocalization.string("Interrupt (Control-C)")) { session.sendKeys(["ctrl+c"]) }
-            Spacer()
             Button {
                 keyboardShown.toggle()
             } label: {
                 Image(systemName: keyboardShown ? "keyboard.chevron.compact.down" : "keyboard")
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 34, height: 30)
+                    .frame(width: 44, height: 44)
                     .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
             }
             .accessibilityIdentifier("agent.keyboard")
             .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
+          }
         }
+        .scrollIndicators(.hidden)
     }
 
     private var composer: some View {
@@ -489,7 +490,8 @@ struct MobileTerminalScreen: View {
 
             Button(action: sendPrompt) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
+                    .font(.title)
+                    .frame(minWidth: 44, minHeight: 44)
                     .foregroundStyle(
                         draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? Theme.textGhost : Theme.accent
@@ -556,7 +558,9 @@ private struct MobileTerminalHost: UIViewRepresentable {
         context.coordinator.session = session
         session.presentationVisible = presentationVisible
         context.coordinator.startPresentationChecks()
-        session.start()
+        // Publishing ObservableObject state during makeUIView triggers a
+        // SwiftUI re-entrant update. Start in a cancellable later actor turn.
+        context.coordinator.scheduleStart(session)
         return view
     }
 
@@ -575,6 +579,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: MobileGhosttyTerminalView, coordinator: Coordinator) {
         coordinator.stopPresentationChecks()
+        coordinator.cancelStart()
         coordinator.session?.stop()
     }
 
@@ -587,6 +592,17 @@ private struct MobileTerminalHost: UIViewRepresentable {
         weak var view: MobileGhosttyTerminalView?
         weak var session: MobileAttachSession?
         nonisolated(unsafe) private var presentationTimer: Timer?
+        private var startTask: Task<Void, Never>?
+
+        func scheduleStart(_ session: MobileAttachSession) {
+            startTask?.cancel()
+            startTask = Task { @MainActor [weak session] in
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                session?.start()
+            }
+        }
+        func cancelStart() { startTask?.cancel(); startTask = nil }
 
         func startPresentationChecks() {
             let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -649,11 +665,10 @@ private struct KeyChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.callout.monospaced().weight(.medium))
                 .foregroundStyle(Theme.textSecondary)
-                .frame(minWidth: 34)
-                .frame(height: 30)
-                .padding(.horizontal, 4)
+                .frame(minWidth: 44)
+                .frame(minHeight: 44)
                 .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
         }
         .accessibilityLabel(accessibilityLabel)
