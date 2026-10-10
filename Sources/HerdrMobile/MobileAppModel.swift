@@ -2,6 +2,8 @@ import Foundation
 import HerdrKit
 import SwiftUI
 
+typealias MobileTransportConnector = @Sendable (MobileDevice) async throws -> MobileTransport
+
 /// Connection state for one device, mirroring the Mac app's session states.
 enum MobileConnectionState: Equatable {
     case idle
@@ -13,7 +15,7 @@ enum MobileConnectionState: Equatable {
 /// One device's live herdr view: transport + snapshot + event pump.
 @MainActor
 final class MobileDeviceSession {
-    let device: MobileDevice
+    var device: MobileDevice
     var state: MobileConnectionState = .idle
     var snapshot: SessionSnapshot?
     private(set) var transport: MobileTransport?
@@ -24,37 +26,52 @@ final class MobileDeviceSession {
     private var snapshotRefreshToken: UUID?
     private var refreshRequested = false
     private var statusGeneration: UInt64 = 0
+    private let connector: MobileTransportConnector
+    private var connectToken: UUID?
 
     var onChange: (() -> Void)?
 
-    init(device: MobileDevice) {
+    init(device: MobileDevice, connector: @escaping MobileTransportConnector) {
         self.device = device
+        self.connector = connector
     }
 
     func connect() async {
+        guard !Task.isCancelled else { return }
         guard case .connecting = state else {
+            let token = UUID()
+            connectToken = token
             state = .connecting
+            let oldTransport = self.transport
+            self.transport = nil
+            eventTask?.cancel()
             onChange?()
+            await oldTransport?.close()
+            var openingTransport: MobileTransport?
             do {
-                let transport: MobileTransport
-                switch device.kind {
-                case .ssh:
-                    transport = try await SSHDirectTransport.connect(device: device)
-                case .tailcat:
-                    transport = try await TailcatMobileTransport.connect(device: device)
+                let transport = try await connector(device)
+                openingTransport = transport
+                guard connectToken == token, !Task.isCancelled else {
+                    await transport.close()
+                    return
                 }
                 let pong = try await transport.request(
                     method: "ping", params: .object([:]), as: PingResult.self
                 )
                 guard pong.protocolVersion >= 17 else {
-                    await transport.close()
                     throw HerdrError.incompatibleProtocol(pong.protocolVersion)
+                }
+                guard connectToken == token, !Task.isCancelled else {
+                    await transport.close()
+                    return
                 }
                 self.transport = transport
                 state = .connected(version: pong.version)
                 await refresh()
-                startEventPump()
+                if connectToken == token { startEventPump() }
             } catch {
+                await openingTransport?.close()
+                guard connectToken == token, !Task.isCancelled else { return }
                 state = .failed((error as? LocalizedError)?.errorDescription ?? "\(error)")
             }
             onChange?()
@@ -63,6 +80,20 @@ final class MobileDeviceSession {
     }
 
     func disconnect() async {
+        let oldTransport = invalidateConnection()
+        await oldTransport?.close()
+    }
+
+    /// Invalidates before the next actor turn, including a connection still opening.
+    func cancelConnection() {
+        let oldTransport = invalidateConnection()
+        snapshot = nil
+        onChange?()
+        Task { await oldTransport?.close() }
+    }
+
+    private func invalidateConnection() -> MobileTransport? {
+        connectToken = nil
         eventTask?.cancel()
         eventTask = nil
         refreshDebounceTask?.cancel()
@@ -72,12 +103,11 @@ final class MobileDeviceSession {
         snapshotRefreshTask = nil
         snapshotRefreshToken = nil
         refreshRequested = false
-        if let transport {
-            await transport.close()
-        }
+        let oldTransport = transport
         transport = nil
         state = .idle
         onChange?()
+        return oldTransport
     }
 
     @discardableResult
@@ -242,14 +272,25 @@ final class MobileAppModel {
     var selectedSpaceID: String?
     var selectedAgentPaneID: String?
     var showAddDevice = false
+    var editingDevice: MobileDevice?
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
-    private let store = MobileDeviceStore()
+    private let store: MobileDeviceStore
+    private let connector: MobileTransportConnector
     private var sessions: [UUID: MobileDeviceSession] = [:]
+    private var connectionTask: Task<Void, Never>?
+    private var connectionTaskToken: UUID?
 
-    init() {
-        devices = store.load()
+    init(store: MobileDeviceStore? = nil, connector: @escaping MobileTransportConnector = { device in
+        switch device.kind {
+        case .ssh: return try await SSHDirectTransport.connect(device: device)
+        case .tailcat: return try await TailcatMobileTransport.connect(device: device)
+        }
+    }) {
+        self.store = store ?? MobileDeviceStore()
+        self.connector = connector
+        devices = self.store.load()
         selectedDeviceID = devices.first?.id
     }
 
@@ -260,7 +301,7 @@ final class MobileAppModel {
     func session(for deviceID: UUID) -> MobileDeviceSession? {
         if let existing = sessions[deviceID] { return existing }
         guard let device = devices.first(where: { $0.id == deviceID }) else { return nil }
-        let session = MobileDeviceSession(device: device)
+        let session = MobileDeviceSession(device: device, connector: connector)
         session.onChange = { [weak self] in self?.revision += 1 }
         sessions[deviceID] = session
         return session
@@ -280,11 +321,29 @@ final class MobileAppModel {
 
     func connectSelected() {
         guard let session = selectedSession else { return }
-        Task { await session.connect() }
+        if case .connecting = session.state { return }
+        guard connectionTaskToken == nil else { return }
+        let token = UUID()
+        connectionTaskToken = token
+        connectionTask = Task {
+            await session.connect()
+            if connectionTaskToken == token {
+                connectionTaskToken = nil
+                connectionTask = nil
+            }
+        }
+    }
+
+    private func cancelSelectedConnection() {
+        connectionTask?.cancel()
+        connectionTask = nil
+        connectionTaskToken = nil
+        selectedSession?.cancelConnection()
     }
 
     func selectDevice(_ id: UUID) {
-        guard id != selectedDeviceID else { return }
+        guard id != selectedDeviceID, devices.contains(where: { $0.id == id }) else { return }
+        cancelSelectedConnection()
         selectedDeviceID = id
         selectedSpaceID = nil
         selectedAgentPaneID = nil
@@ -293,25 +352,63 @@ final class MobileAppModel {
 
     // MARK: - Device management
 
+    func updateDevice(_ device: MobileDevice, password: String? = nil) throws {
+        guard let index = devices.firstIndex(where: { $0.id == device.id }),
+              devices[index].kind == device.kind else { throw MobileDeviceError.deviceNotFound }
+        let validated = try device.validated()
+        try savePassword(password, for: validated)
+        var previousConnection = devices[index]
+        previousConnection.name = validated.name
+        let connectionChanged = previousConnection != validated || password?.isEmpty == false
+        if connectionChanged {
+            if selectedDeviceID == device.id { cancelSelectedConnection() }
+            let obsolete = sessions.removeValue(forKey: device.id)
+            obsolete?.onChange = nil
+            obsolete?.cancelConnection()
+        } else {
+            sessions[device.id]?.device = validated
+        }
+        devices[index] = validated
+        store.save(devices)
+        if connectionChanged, selectedDeviceID == device.id {
+            selectedSpaceID = nil
+            selectedAgentPaneID = nil
+            connectSelected()
+        }
+        revision += 1
+    }
+
+    private func savePassword(_ password: String?, for device: MobileDevice) throws {
+        guard !device.isTailcat else { return }
+        if device.authMethod == .password {
+            if let password, !password.isEmpty {
+                try MobileSecretStore.setPassword(password, for: device.id)
+            } else if MobileSecretStore.password(for: device.id)?.isEmpty != false {
+                throw MobileDeviceError.missingPassword
+            }
+        } else {
+            try MobileSecretStore.removePassword(for: device.id)
+        }
+    }
+
     func addDevice(
         name: String,
         host: String,
         port: UInt16,
         username: String,
         authMethod: MobileDevice.AuthMethod,
-        password: String
-    ) {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let device = MobileDevice(
-            name: trimmedName.isEmpty ? host : trimmedName,
-            host: host.trimmingCharacters(in: .whitespacesAndNewlines),
+        password: String,
+        socketPath: String? = nil
+    ) throws {
+        let device = try MobileDevice(
+            name: name,
+            host: host,
             port: port,
-            username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            authMethod: authMethod
-        )
-        if authMethod == .password {
-            MobileSecretStore.setPassword(password, for: device.id)
-        }
+            username: username,
+            authMethod: authMethod,
+            socketPath: socketPath
+        ).validated()
+        try savePassword(password, for: device)
         devices.append(device)
         store.save(devices)
         selectDevice(device.id)
@@ -387,17 +484,26 @@ final class MobileAppModel {
         }
     }
 
-    func removeDevice(_ device: MobileDevice) {
-        if let session = sessions.removeValue(forKey: device.id) {
-            Task { await session.disconnect() }
+    func removeDevice(_ device: MobileDevice) throws {
+        guard let saved = devices.first(where: { $0.id == device.id }) else {
+            throw MobileDeviceError.deviceNotFound
         }
-        MobileSecretStore.removePassword(for: device.id)
-        if device.isTailcat {
+        try MobileSecretStore.removePassword(for: device.id)
+        if selectedDeviceID == device.id { cancelSelectedConnection() }
+        if let session = sessions.removeValue(forKey: device.id) {
+            session.onChange = nil
+            session.cancelConnection()
+        }
+        if saved.isTailcat {
             TailcatCredentialStore.removeToken(for: device.id)
             Task { await TailcatBridgeManager.shared.tearDown(deviceID: device.id) }
         }
-        KnownHostsStore.unpin(host: device.host, port: device.port)
         devices.removeAll { $0.id == device.id }
+        if !saved.isTailcat, !devices.contains(where: {
+            !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
+        }) {
+            KnownHostsStore.unpin(host: saved.host, port: saved.port)
+        }
         store.save(devices)
         if selectedDeviceID == device.id {
             selectedDeviceID = devices.first?.id

@@ -64,6 +64,24 @@ struct MobileDevice: Codable, Identifiable, Hashable {
 
     var isTailcat: Bool { kind == .tailcat }
 
+    func validated() throws -> MobileDevice {
+        var result = self
+        result.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind == .ssh {
+            result.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !result.host.isEmpty else { throw MobileDeviceError.emptyHost }
+            guard !result.username.isEmpty else { throw MobileDeviceError.emptyUsername }
+            guard port > 0 else { throw MobileDeviceError.invalidPort }
+            let socket = socketPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.socketPath = socket?.isEmpty == false ? socket : nil
+        }
+        if result.name.isEmpty {
+            result.name = isTailcat ? String(localized: "Tailcat device") : result.host
+        }
+        return result
+    }
+
     var subtitle: String {
         switch kind {
         case .ssh:
@@ -74,9 +92,31 @@ struct MobileDevice: Codable, Identifiable, Hashable {
     }
 }
 
+enum MobileDeviceError: LocalizedError {
+    case emptyHost, emptyUsername, invalidPort, deviceNotFound, missingPassword
+    case keychain(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyHost: return String(localized: "Enter a host or IP address.")
+        case .emptyUsername: return String(localized: "Enter an SSH username.")
+        case .invalidPort: return String(localized: "SSH port must be between 1 and 65535.")
+        case .deviceNotFound: return String(localized: "This device no longer exists. Reopen its settings.")
+        case .missingPassword: return String(localized: "Enter a password for this device.")
+        case .keychain(let status):
+            return String(localized: "Could not update this device's saved credential (\(status)). Try again.")
+        }
+    }
+}
+
 /// Persists the device list as a versioned JSON envelope in UserDefaults.
 @MainActor
 final class MobileDeviceStore {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
     private static let key = "devices.v1"
     private struct Envelope: Codable {
         var version: Int
@@ -84,7 +124,7 @@ final class MobileDeviceStore {
     }
 
     func load() -> [MobileDevice] {
-        guard let data = UserDefaults.standard.data(forKey: Self.key),
+        guard let data = defaults.data(forKey: Self.key),
               let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
         else { return [] }
         return envelope.devices
@@ -93,7 +133,7 @@ final class MobileDeviceStore {
     func save(_ devices: [MobileDevice]) {
         let envelope = Envelope(version: 1, devices: devices)
         if let data = try? JSONEncoder().encode(envelope) {
-            UserDefaults.standard.set(data, forKey: Self.key)
+            defaults.set(data, forKey: Self.key)
         }
     }
 }
@@ -115,19 +155,24 @@ enum MobileSecretStore {
         return String(data: data, encoding: .utf8)
     }
 
-    static func setPassword(_ password: String, for deviceID: UUID) {
+    static func setPassword(_ password: String, for deviceID: UUID) throws {
         let data = Data(password.utf8)
         var query = baseQuery(deviceID: deviceID)
         let update: [String: Any] = [kSecValueData as String: data]
         let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-        guard status == errSecItemNotFound else { return }
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else { throw MobileDeviceError.keychain(status) }
         query[kSecValueData as String] = data
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(query as CFDictionary, nil)
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+        guard addStatus == errSecSuccess else { throw MobileDeviceError.keychain(addStatus) }
     }
 
-    static func removePassword(for deviceID: UUID) {
-        SecItemDelete(baseQuery(deviceID: deviceID) as CFDictionary)
+    static func removePassword(for deviceID: UUID) throws {
+        let status = SecItemDelete(baseQuery(deviceID: deviceID) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw MobileDeviceError.keychain(status)
+        }
     }
 
     private static func baseQuery(deviceID: UUID) -> [String: Any] {
