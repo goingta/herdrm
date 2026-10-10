@@ -84,7 +84,7 @@ extension FocusedValues {
 @main
 struct HerdrMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @AppStorage("app.theme") private var themePreference = "system"
+    @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
     @FocusedValue(\.appModel) private var focusedModel
     @FocusedValue(\.splitAxis) private var focusedSplitAxis
 
@@ -107,6 +107,7 @@ struct HerdrMApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: appDelegate.model)
+                .preferredColorScheme(AppearancePreference(rawValue: themePreference)?.colorScheme)
                 .onAppear { Self.applyTheme(themePreference) }
                 .onChange(of: themePreference) { _, newValue in
                     Self.applyTheme(newValue)
@@ -634,7 +635,7 @@ struct TerminalSettingsView: View {
 }
 
 struct AppearanceSettingsView: View {
-    @AppStorage("app.theme") private var themePreference = "system"
+    @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
     @AppStorage(AppLanguage.defaultsKey) private var language = AppLanguage.system.rawValue
 
     var body: some View {
