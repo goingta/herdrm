@@ -49,11 +49,13 @@ public final class AgentReadState {
 
     /// The host calls this only after verifying current content is presented,
     /// never on selection, channel open, or creation of a terminal surface.
-    public func presented(_ key: AgentUnreadKey, generation: UUID, foreground: Bool) {
-        guard terminals[key] == generation, foreground else { return }
+    @discardableResult
+    public func presented(_ key: AgentUnreadKey, generation: UUID, foreground: Bool) -> Bool {
+        guard terminals[key] == generation, foreground else { return false }
         visible.insert(key)
         unread.remove(key)
         save()
+        return true
     }
 
     public func hideTerminal(_ key: AgentUnreadKey, generation: UUID) {

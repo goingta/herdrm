@@ -1551,26 +1551,27 @@ struct AttachTerminalView: NSViewRepresentable {
         }
 
         private func checkPresentation() {
-            guard visible, NSApp.isActive, !ended, let view, view.window?.isVisible == true else {
+            guard visible, NSApp.isActive, !ended, let view, view.window?.isVisible == true, view.window?.isKeyWindow == true else {
                 hideContent(); return
             }
-            guard !contentVerified, !verifying, Date() >= nextVerification, let key = unreadKey, let generation,
-                  let readState, let service, host?.hasReceivedOutput == true,
-                  let text = host?.session.readViewportText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  let image = view.snapshotImage(),
-                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                  TerminalFrameReadiness.containsRenderedContent(cgImage) else { return }
+            guard !contentVerified, !verifying, Date() >= nextVerification, let key = unreadKey,
+                  let generation, let readState, let service, let host, host.hasReceivedOutput else { return }
             verifying = true
             nextVerification = Date().addingTimeInterval(1)
             let epoch = presentationEpoch
-            Task { @MainActor [weak self] in
+            Task { @MainActor [weak self, weak view] in
                 defer { self?.verifying = false }
-                guard let pane = try? await service.readPane(paneID: key.paneID), let self,
-                      self.visible, !self.ended, NSApp.isActive,
-                      self.generation == generation, self.presentationEpoch == epoch, self.view?.window?.isVisible == true,
-                      AttachContentReadiness.matchesPane(visibleText: text, paneANSIText: pane.text) else { return }
+                guard let view else { return }
+                let confirmed = await TerminalPresentation.confirmRead(
+                    view: view, terminal: host.session, readState: readState, key: key, generation: generation,
+                    isCurrent: { [weak self] in
+                        guard let self else { return false }
+                        return self.visible && !self.ended && self.generation == generation && self.presentationEpoch == epoch
+                    },
+                    readPane: { try await service.readPane(paneID: key.paneID).text }
+                )
+                guard confirmed, let self else { return }
                 self.contentVerified = true
-                readState.presented(key, generation: generation, foreground: true)
                 self.onReadStateChanged()
             }
         }
