@@ -1,0 +1,204 @@
+{
+  "repository": "goingta/herdrm",
+  "approvedAt": "2026-10-10",
+  "publishedAt": "2026-10-10",
+  "dependencyMode": "body-links",
+  "nativeDependencies": {
+    "status": "unavailable",
+    "reason": "GitHub UI reported Cannot edit issues right now; retry unsuccessful; issue bodies contain real blocker links."
+  },
+  "tickets": {
+    "1": {
+      "number": 1,
+      "url": "https://github.com/goingta/herdrm/issues/1",
+      "title": "[iPhone] 01 — 开发机配置与切换",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "2": {
+      "number": 2,
+      "url": "https://github.com/goingta/herdrm/issues/2",
+      "title": "[iPhone] 02 — HTTP CONNECT 网关连接",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "3": {
+      "number": 3,
+      "url": "https://github.com/goingta/herdrm/issues/3",
+      "title": "[iPhone] 03 — 手机公钥配对与撤销指导",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "4": {
+      "number": 4,
+      "url": "https://github.com/goingta/herdrm/issues/4",
+      "title": "[iPhone] 04 — 服务器指纹确认与变化处理",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "5": {
+      "number": 5,
+      "url": "https://github.com/goingta/herdrm/issues/5",
+      "title": "[iPhone] 05 — 分阶段连接测试与修复提示",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        2,
+        3,
+        4
+      ]
+    },
+    "6": {
+      "number": 6,
+      "url": "https://github.com/goingta/herdrm/issues/6",
+      "title": "[iPhone] 06 — 工作区筛选与已有 Agent 状态",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "7": {
+      "number": 7,
+      "url": "https://github.com/goingta/herdrm/issues/7",
+      "title": "[iPhone] 07 — 原生终端与控制键",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "8": {
+      "number": 8,
+      "url": "https://github.com/goingta/herdrm/issues/8",
+      "title": "[iPhone] 08 — 按设备和 Agent 保存草稿与选择",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "9": {
+      "number": 9,
+      "url": "https://github.com/goingta/herdrm/issues/9",
+      "title": "[iPhone] 09 — Prompt 提交确认与待核对状态",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        8
+      ]
+    },
+    "10": {
+      "number": 10,
+      "url": "https://github.com/goingta/herdrm/issues/10",
+      "title": "[iPhone] 10 — 锁屏与断网后的终端恢复",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        7
+      ]
+    },
+    "11": {
+      "number": 11,
+      "url": "https://github.com/goingta/herdrm/issues/11",
+      "title": "[iPhone] 11 — 冷启动恢复 Agent 开发上下文",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        9
+      ]
+    },
+    "12": {
+      "number": 12,
+      "url": "https://github.com/goingta/herdrm/issues/12",
+      "title": "[iPhone] 12 — 完整 URL 的 App 内预览与导航",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "13": {
+      "number": 13,
+      "url": "https://github.com/goingta/herdrm/issues/13",
+      "title": "[iPhone] 13 — SSH 远端端口的 App 内预览",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        2,
+        12
+      ]
+    },
+    "14": {
+      "number": 14,
+      "url": "https://github.com/goingta/herdrm/issues/14",
+      "title": "[iPhone] 14 — 保存预览、工作区关联与站点隔离",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        13
+      ]
+    },
+    "15": {
+      "number": 15,
+      "url": "https://github.com/goingta/herdrm/issues/15",
+      "title": "[iPhone] 15 — API、WebSocket 与同源 HMR 预览",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        13
+      ]
+    },
+    "16": {
+      "number": 16,
+      "url": "https://github.com/goingta/herdrm/issues/16",
+      "title": "[iPhone] 16 — 锁屏、断网与网页终止后的预览恢复",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        14,
+        15
+      ]
+    },
+    "17": {
+      "number": 17,
+      "url": "https://github.com/goingta/herdrm/issues/17",
+      "title": "[iPhone] 17 — 可复制的连接与恢复诊断",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        5,
+        10,
+        13
+      ]
+    },
+    "18": {
+      "number": 18,
+      "url": "https://github.com/goingta/herdrm/issues/18",
+      "title": "[iPhone] 18 — 完整开发流程与稳定性验收",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        1,
+        6,
+        11,
+        16,
+        17
+      ]
+    }
+  }
+}
