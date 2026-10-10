@@ -25,7 +25,8 @@ struct NavigationHarnessApp: App {
                 .tint(Theme.accent)
                 .environment(\.dynamicTypeSize, ProcessInfo.processInfo.environment["NAV_HARNESS_LARGE_TEXT"] == "1" ? .accessibility3 : .large)
                 .onChange(of: phase) { _, phase in
-                    if phase == .active, case .connected = model.selectedConnectionState { model.connectSelected() }
+                    if phase == .active { model.resumeSelected() }
+                    else { model.suspendSelected() }
                 }
         }
     }
@@ -45,11 +46,17 @@ private actor NavigationHarnessConnector {
 
 private actor NavigationHarnessTransport: MobileTransport {
     let removeSelectedPane: Bool
+    private var snapshots = 0
     init(removeSelectedPane: Bool) { self.removeSelectedPane = removeSelectedPane }
     func request(method: String, params: JSONValue) async throws -> JSONValue {
         if method == "ping" { return .object(["version": .string("fixture"), "protocol": .number(22)]) }
-        let payload = try JSONDecoder().decode(JSONValue.self, from: Data(Self.snapshot.utf8))
-        guard removeSelectedPane, case .object(var envelope) = payload,
+        snapshots += 1
+        if snapshots > 1, ProcessInfo.processInfo.environment["NAV_HARNESS_RECONNECT_FAILURE"] == "1" {
+            throw NSError(domain: "NavigationExternalFixture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Fixture held connection unavailable"])
+        }
+        let manyTabs = ProcessInfo.processInfo.environment["NAV_HARNESS_MANY_TABS"] == "1"
+        let payload = try JSONDecoder().decode(JSONValue.self, from: Data((manyTabs ? Self.manyTabsSnapshot : Self.snapshot).utf8))
+        guard (removeSelectedPane || snapshots > 1 && ProcessInfo.processInfo.environment["NAV_HARNESS_DELETED_PANE"] == "1"), case .object(var envelope) = payload,
               case .object(var snapshot) = envelope["snapshot"], case .array(let agents) = snapshot["agents"] else { return payload }
         snapshot["agents"] = .array(agents.filter { $0["pane_id"]?.stringValue != "pane-two" })
         envelope["snapshot"] = .object(snapshot)
@@ -58,6 +65,13 @@ private actor NavigationHarnessTransport: MobileTransport {
     nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel { throw CancellationError() }
     func close() async {}
+    static var manyTabsSnapshot: String {
+        var text = snapshot.replacingOccurrences(of: "\"active_tab_id\":\"tab-two\"", with: "\"active_tab_id\":\"tab-four\"")
+        text = text.replacingOccurrences(of: "\"focused_pane_id\":\"pane-two\"", with: "\"focused_pane_id\":\"pane-four\"")
+        text = text.replacingOccurrences(of: "\"tabs\":[", with: "\"tabs\":[{\"tab_id\":\"tab-three\",\"workspace_id\":\"space-a\",\"number\":3,\"label\":\"第三个很长的项目工作任务\"},{\"tab_id\":\"tab-four\",\"workspace_id\":\"space-a\",\"number\":4,\"label\":\"第四个很长的当前工作任务\"},{\"tab_id\":\"tab-five\",\"workspace_id\":\"space-a\",\"number\":5,\"label\":\"第五个很长的项目工作任务\"},")
+        text = text.replacingOccurrences(of: "\"agents\":[", with: "\"agents\":[{\"workspace_id\":\"space-a\",\"tab_id\":\"tab-four\",\"pane_id\":\"pane-four\",\"agent\":\"codex\",\"agent_status\":\"working\"},")
+        return text
+    }
     static let snapshot = """
     {"snapshot":{
       "focused_workspace_id":"space-a","focused_pane_id":"pane-two",

@@ -518,13 +518,7 @@ struct SidebarView: View {
 
     private func accessibilityLabel(unread: Bool) -> String {
         var parts = [entry.title]
-        switch entry.agent.status {
-        case .working: parts.append(AppLocalization.string("Working"))
-        case .blocked: parts.append(AppLocalization.string("Needs input"))
-        case .done where unread: parts.append(AppLocalization.string("Unread"))
-        case .done: break
-        case .idle, .unknown: break
-        }
+        parts.append(agentStatusDescription(entry.agent.status, unread: unread))
         if let account = entry.agent.statsLines.first(where: { $0.kind == .account }) {
             parts.append(account.text)
         }

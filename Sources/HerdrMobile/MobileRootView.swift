@@ -6,6 +6,8 @@ import SwiftUI
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
     @State private var drawerShown = false
+    @State private var restorationHintVisible = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -15,6 +17,11 @@ struct MobileRootView: View {
                     workspaceHeader
                     if !model.workspaceTabs.isEmpty { tabStrip }
                     terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .top) {
+                            if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
+                                restorationBanner
+                            }
+                        }
                 }
                 .background(Theme.contentBackground)
                 .accessibilityHidden(drawerShown)
@@ -34,6 +41,15 @@ struct MobileRootView: View {
         .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
         .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
         .task { if model.selectedDeviceID != nil { model.connectSelected() } }
+        .task(id: [model.selectedTransportReady, scenePhase == .active]) {
+            restorationHintVisible = false
+            guard !model.selectedTransportReady, scenePhase == .active else { return }
+            // Input/read proof is gated immediately; quick healthy returns
+            // finish validation before a restoration hint needs to appear.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, !model.selectedTransportReady, scenePhase == .active else { return }
+            restorationHintVisible = true
+        }
     }
 
     // A native custom bar preserves a real 44pt button boundary even on
@@ -144,7 +160,8 @@ struct MobileRootView: View {
 
     private var tabStrip: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal) {
+            ScrollViewReader { proxy in
+              ScrollView(.horizontal) {
                 HStack(spacing: 6) {
                     ForEach(model.workspaceTabs) { tab in
                         Button { model.selectTab(tab.id) } label: {
@@ -165,6 +182,7 @@ struct MobileRootView: View {
                                         in: RoundedRectangle(cornerRadius: VisualMetrics.controlRadius))
                         }
                         .buttonStyle(.plain)
+                        .id(tab.id)
                         .accessibilityIdentifier("workspace.tab.\(tab.id)")
                         .accessibilityValue(model.paneChoices(in: tab.id).compactMap(\.agent).map {
                             agentStatusDescription($0.status, unread: model.isUnread($0))
@@ -174,7 +192,15 @@ struct MobileRootView: View {
                 }
                 .padding(.horizontal, 10).padding(.vertical, 4)
             }
-            .scrollIndicators(.hidden)
+              .scrollIndicators(.hidden)
+              .task(id: "\(model.selectedSpaceID ?? "")/\(model.selectedTabID ?? "")/\(model.workspaceTabs.map(\.id).joined(separator: ","))") {
+                  // Wait for the selected remote Tab's layout after snapshots,
+                  // restoration, or a remembered Space selection changes.
+                  await Task.yield()
+                  guard !Task.isCancelled, let selected = model.selectedTabID else { return }
+                  proxy.scrollTo(selected, anchor: .center)
+              }
+            }
             if let tabID = model.selectedTabID, !model.paneChoices(in: tabID).isEmpty,
                model.paneChoices(in: tabID).count > 1 || model.selectedTargetUnavailable {
                 panePicker(tabID: tabID)
@@ -213,11 +239,13 @@ struct MobileRootView: View {
     private var terminalDetail: some View {
         if model.selectedDevice == nil {
             stateView("No Devices", detail: AppLocalization.string("Add a development machine running herdr to get started."), symbol: "desktopcomputer")
-        } else if case .failed(let reason) = model.selectedConnectionState {
-            stateView("Connection Failed", detail: reason, symbol: "exclamationmark.circle", retry: true)
-        } else if model.selectedConnectionState == .connecting || model.selectedConnectionState == .idle || !model.hasCurrentSnapshot {
-            stateView(model.selectedAgentPaneID == nil ? "Connecting…" : "Restoring Terminal…",
-                      detail: model.selectedPaneTitle ?? model.selectedSpace?.label ?? "", symbol: "arrow.triangle.2.circlepath")
+        } else if !model.hasCurrentSnapshot {
+            if case .failed(let reason) = model.selectedConnectionState {
+                stateView("Connection Failed", detail: reason, symbol: "exclamationmark.circle", retry: true)
+            } else {
+                stateView(model.selectedAgentPaneID == nil ? "Connecting…" : "Restoring Terminal…",
+                          detail: model.selectedPaneTitle ?? model.selectedSpace?.label ?? "", symbol: "arrow.triangle.2.circlepath")
+            }
         } else if model.selectedTargetUnavailable {
             stateView("Selected Terminal Unavailable", detail: [model.selectedPaneTitle,
                 AppLocalization.string("The selected target is no longer available. Choose another existing pane, tab, or Space.")]
@@ -229,16 +257,40 @@ struct MobileRootView: View {
                 title: agent.title(tabLabel: model.tabLabel(for: agent)), composerDraft: composerDraft(paneID: agent.paneID),
                 readState: model.agentReadState,
                 unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
-                onReadStateChanged: { model.terminalReadStateChanged() })
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(agent.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
+                onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady)
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(agent.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
-            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane))
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
+            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady)
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if model.spaces.isEmpty {
             stateView("No Spaces", detail: AppLocalization.string("No existing workspace is available on this development machine."), symbol: "folder")
         } else {
             stateView("No Existing Terminal", detail: AppLocalization.string("This tab has no available Agent or terminal. Choose another existing tab or Space."), symbol: "terminal")
         }
+    }
+
+    private var shouldShowRestorationHint: Bool {
+        if case .failed = model.selectedConnectionState { return true }
+        return restorationHintVisible
+    }
+
+    private var restorationBanner: some View {
+        HStack(spacing: 8) {
+            if case .failed(let reason) = model.selectedConnectionState {
+                Image(systemName: "exclamationmark.circle")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppLocalization.string("Connection Failed")).font(.caption.weight(.semibold))
+                    Text(reason).font(.caption).fixedSize(horizontal: false, vertical: true)
+                }
+                Button(AppLocalization.string("Reconnect")) { model.connectSelected() }.frame(minHeight: 44)
+            } else {
+                ProgressView().controlSize(.small)
+                Text(AppLocalization.string("Restoring Terminal…")).font(.caption)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Theme.statusBarBackground.opacity(0.96))
+        .accessibilityIdentifier("workspace.connection-state")
     }
 
     private func stateView(_ title: String.LocalizationValue, detail: String, symbol: String, retry: Bool = false) -> some View {

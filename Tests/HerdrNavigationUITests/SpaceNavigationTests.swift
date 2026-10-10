@@ -2,6 +2,24 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testInitialFourthTabAndSpaceReturnKeepSelectionVisibleWithoutSwiping() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["NAV_HARNESS_MANY_TABS"] = "1"
+        app.launch()
+        let selected = app.buttons["workspace.tab.tab-four"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        XCTAssertTrue(selected.isSelected)
+        XCTAssertTrue(selected.isHittable, "The initially focused remote tab must be visible without swiping")
+        app.buttons["spaces.drawer"].tap()
+        app.buttons["space.select.space-b"].tap()
+        app.buttons["spaces.drawer"].tap()
+        app.buttons["space.select.space-a"].tap()
+        XCTAssertTrue(selected.isSelected)
+        XCTAssertTrue(selected.isHittable, "A remembered tab must scroll into view after changing Space")
+    }
+
+    @MainActor
     func testAuthoritativeDeletedPaneShowsUnavailableUntilUserChoosesAnotherPane() {
         continueAfterFailure = false
         let app = XCUIApplication()

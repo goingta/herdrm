@@ -30,10 +30,10 @@ struct HerdrMobileApp: App {
                 .tint(Theme.accent)
         }
         .onChange(of: scenePhase) { _, phase in
-            // iOS tears sockets down in the background; on return, re-prove the
-            // connection instead of trusting a held one.
             if phase == .active, model.selectedDeviceID != nil {
-                model.connectSelected()
+                model.resumeSelected()
+            } else if phase != .active {
+                model.suspendSelected()
             }
         }
     }

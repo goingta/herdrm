@@ -68,7 +68,7 @@ final class MobileAttachSession: ObservableObject {
     }
 
     @Published var status: Status = .connecting
-    let transport: MobileTransport
+    private(set) var transport: MobileTransport
     let target: TerminalAttachTarget
 
     /// The host-managed Ghostty backend the surface in `MobileTerminalHost`
@@ -78,6 +78,7 @@ final class MobileAttachSession: ObservableObject {
     /// The channel, shared with the session's @Sendable write closure.
     private let channelBox: ChannelBox
     private var channel: SSHPTYChannel?
+    private var attachAttempt = UUID()
     private var openTask: Task<Void, Never>?
     private var readTask: Task<Void, Never>?
     /// Last grid the surface reported; reconnects open at this size instead
@@ -91,6 +92,7 @@ final class MobileAttachSession: ObservableObject {
     private var generation: UUID?
     private var contentVerified = false
     private var verifying = false
+    private var verificationToken = UUID()
     private var presentationEpoch = 0
     private var nextVerification = Date.distantPast
     var readState: AgentReadState?
@@ -147,7 +149,8 @@ final class MobileAttachSession: ObservableObject {
     /// The herdr pane behind this attach, for key/prompt RPCs.
     let paneID: String
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true) {
+        self.transportReady = transportReady
         self.readState = readState
         self.unreadKey = unreadKey
         self.onReadStateChanged = onReadStateChanged
@@ -156,6 +159,7 @@ final class MobileAttachSession: ObservableObject {
         self.paneID = paneID
         let box = ChannelBox()
         channelBox = box
+        box.setInputEnabled(transportReady)
         terminal = InMemoryTerminalSession(
             write: { data in box.write(data) },
             resize: { viewport in
@@ -173,11 +177,25 @@ final class MobileAttachSession: ObservableObject {
         return nil
     }
 
-    /// Marks the session ready to attach. The channel opens on the surface's
-    /// first viewport report (the exact grid, no SIGWINCH redraw); a
-    /// reconnect reuses the last grid and opens immediately.
+    /// Recovery keeps the cached frame visible, with input and read proof gated.
+    var transportReady = true {
+        didSet {
+            channelBox.setInputEnabled(transportReady)
+            if !transportReady { hidePresentedContent() }
+        }
+    }
+
+    /// Retain Ghostty scrollback/frame when only the remote connection changes.
+    func replaceTransport(_ replacement: MobileTransport) {
+        guard transport !== replacement else { return }
+        stop()
+        transport = replacement
+        start()
+    }
+
+    /// Attach at the actual viewport; reconnects reuse the last known grid.
     func start() {
-        guard channel == nil, openTask == nil else { return }
+        guard transportReady, channel == nil, openTask == nil else { return }
         status = .connecting
         receivedCurrentOutput = false
         contentVerified = false
@@ -197,19 +215,25 @@ final class MobileAttachSession: ObservableObject {
             Task { try? await channel.resize(columns: columns, rows: rows, timeout: .seconds(5)) }
             return
         }
-        guard openTask == nil, case .connecting = status else { return }
+        guard transportReady, openTask == nil, case .connecting = status else { return }
         open(columns: columns, rows: rows)
     }
 
     private func open(columns: Int, rows: Int) {
+        let openingTransport = transport
+        let attempt = UUID()
+        attachAttempt = attempt
         openTask = Task {
-            defer { openTask = nil }
+            defer { if attachAttempt == attempt { openTask = nil } }
             do {
-                let channel = try await transport.openTerminal(
+                let channel = try await openingTransport.openTerminal(
                     command: MobileAttach.command(target: target),
                     columns: max(columns, 20),
                     rows: max(rows, 5)
                 )
+                guard !Task.isCancelled, attachAttempt == attempt, transport === openingTransport else {
+                    try? await channel.close(timeout: .seconds(2)); return
+                }
                 self.channel = channel
                 channelBox.setChannel(channel)
                 status = .running
@@ -221,6 +245,7 @@ final class MobileAttachSession: ObservableObject {
                     )
                 }
             } catch {
+                guard !Task.isCancelled, attachAttempt == attempt else { return }
                 status = .ended(
                     (error as? LocalizedError)?.errorDescription ?? "\(error)"
                 )
@@ -233,11 +258,12 @@ final class MobileAttachSession: ObservableObject {
             do {
                 while !Task.isCancelled {
                     guard let data = try await channel.read(timeout: .seconds(3600)) else { break }
+                    guard !Task.isCancelled, self?.channel === channel else { return }
                     guard !data.isEmpty else { continue }
                     self?.ingest(data)
                 }
             } catch {}
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled, self.channel === channel else { return }
             if case .running = self.status {
                 self.status = .ended(AppLocalization.string("Session ended"))
             }
@@ -273,7 +299,7 @@ final class MobileAttachSession: ObservableObject {
     }
 
     func verifyPresentedContent(in view: UITerminalView, visible: Bool) {
-        guard visible, UIApplication.shared.applicationState == .active,
+        guard transportReady, visible, UIApplication.shared.applicationState == .active,
               view.window != nil, case .running = status else { hidePresentedContent(); return }
         guard !contentVerified, !verifying, Date() >= nextVerification, receivedCurrentOutput,
               let key = unreadKey, let generation, let readState,
@@ -281,10 +307,12 @@ final class MobileAttachSession: ObservableObject {
               let image = view.snapshotImage()?.cgImage,
               TerminalFrameReadiness.containsRenderedContent(image) else { return }
         verifying = true
+        let verification = UUID()
+        verificationToken = verification
         nextVerification = Date().addingTimeInterval(1)
         let epoch = presentationEpoch
         Task { @MainActor [weak self, weak view] in
-            defer { self?.verifying = false }
+            defer { if self?.verificationToken == verification { self?.verifying = false } }
             guard let self else { return }
             let result = try? await transport.request(method: "pane.read", params: .object([
                 "pane_id": .string(key.paneID), "source": .string("visible"), "format": .string("ansi")
@@ -294,7 +322,7 @@ final class MobileAttachSession: ObservableObject {
                   let paneText = result?["read"]?["text"]?.stringValue,
                   AttachContentReadiness.matchesPane(visibleText: text, paneANSIText: paneText) else { return }
             // Visibility may have changed while the RPC was in flight.
-            guard self.presentationVisible else { return }
+            guard self.transportReady, self.presentationVisible else { return }
             contentVerified = true
             readState.presented(key, generation: generation, foreground: true)
             onReadStateChanged()
@@ -308,7 +336,9 @@ final class MobileAttachSession: ObservableObject {
     /// Sends named keys through herdr's RPC — proper terminal encoding without
     /// this client knowing the pane's keyboard protocol state.
     func sendKeys(_ keys: [String]) {
+        guard transportReady else { return }
         Task {
+            guard transportReady else { return }
             _ = try? await transport.request(
                 method: "pane.send_input",
                 params: .object([
@@ -321,8 +351,9 @@ final class MobileAttachSession: ObservableObject {
 
     /// Sends a prompt to the agent; herdr delivers and submits it.
     func prompt(_ text: String) {
-        guard let agentPaneID else { return }
+        guard transportReady, let agentPaneID else { return }
         Task {
+            guard transportReady else { return }
             _ = try? await transport.request(
                 method: "agent.prompt",
                 params: .object([
@@ -334,6 +365,9 @@ final class MobileAttachSession: ObservableObject {
     }
 
     func stop() {
+        verificationToken = UUID()
+        verifying = false
+        attachAttempt = UUID()
         hidePresentedContent()
         if let key = unreadKey, let generation { readState?.endTerminal(key, generation: generation) }
         receivedCurrentOutput = false
@@ -358,6 +392,11 @@ final class MobileAttachSession: ObservableObject {
     private final class ChannelBox: @unchecked Sendable {
         private let lock = NSLock()
         private var channel: SSHPTYChannel?
+        private var inputEnabled = true
+
+        func setInputEnabled(_ enabled: Bool) {
+            lock.lock(); inputEnabled = enabled; lock.unlock()
+        }
         /// Main-actor hop for grid reports from the Ghostty IO thread.
         weak var owner: MobileAttachSession?
 
@@ -369,7 +408,7 @@ final class MobileAttachSession: ObservableObject {
 
         func write(_ data: Data) {
             lock.lock()
-            let channel = self.channel
+            let channel = inputEnabled ? self.channel : nil
             lock.unlock()
             guard let channel else { return }
             Task { try? await channel.write(data, timeout: .seconds(10)) }
@@ -391,17 +430,21 @@ struct MobileTerminalScreen: View {
     @State private var keyboardShown = false
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
+    private let transport: MobileTransport
+    private let transportReady: Bool
     @Environment(\.agentTabVisible) private var agentTabVisible
     private let readState: AgentReadState?
     private let unreadKey: AgentUnreadKey?
     private let onReadStateChanged: () -> Void
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true) {
+        self.transport = transport
+        self.transportReady = transportReady
         self.readState = readState
         self.unreadKey = unreadKey
         self.onReadStateChanged = onReadStateChanged
         _session = StateObject(
-            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged)
+            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged, transportReady: transportReady)
         )
         self.title = title
         self.composerDraft = composerDraft
@@ -412,9 +455,9 @@ struct MobileTerminalScreen: View {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
-                controls
+                controls.disabled(!transportReady)
             }
-            if case .ended(let reason) = session.status {
+            if transportReady, case .ended(let reason) = session.status {
                 endedOverlay(reason)
             }
         }
@@ -422,9 +465,20 @@ struct MobileTerminalScreen: View {
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbarBackground(terminalBackground, for: .navigationBar)
         .onAppear {
+            session.transportReady = transportReady
             session.readState = readState
             session.unreadKey = unreadKey
             session.onReadStateChanged = onReadStateChanged
+        }
+        .onChange(of: ObjectIdentifier(transport)) { _, _ in
+            if transportReady { session.replaceTransport(transport) }
+        }
+        .onChange(of: transportReady) { _, value in
+            session.transportReady = value
+            guard value else { return }
+            session.replaceTransport(transport)
+            if case .ended = session.status { session.stop() }
+            session.start()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
         .onChange(of: agentTabVisible) { _, value in session.presentationVisible = value }
