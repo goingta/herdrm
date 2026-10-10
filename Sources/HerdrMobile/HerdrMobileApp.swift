@@ -3,6 +3,8 @@ import SwiftUI
 @main
 struct HerdrMobileApp: App {
     @State private var model = MobileAppModel()
+    @State private var languagePreference = AppLanguagePreference.shared
+    @StateObject private var appearance = AppAppearancePreference()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -20,6 +22,11 @@ struct HerdrMobileApp: App {
     var body: some Scene {
         WindowGroup {
             MobileRootView(model: model)
+                .environment(languagePreference)
+                .environment(\.locale, languagePreference.locale)
+                .environmentObject(appearance)
+                .preferredColorScheme(appearance.preferredColorScheme)
+                .tint(Theme.accent)
         }
         .onChange(of: scenePhase) { _, phase in
             // iOS tears sockets down in the background; on return, re-prove the
