@@ -87,6 +87,47 @@ final class AttentionTests: XCTestCase {
         XCTAssertEqual(pruned, [other])
     }
 
+    @MainActor
+    func testCompletionSurvivesRestartAndClientsRemainIndependent() throws {
+        let suite = "read-state-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let device = UUID()
+        let key = AgentUnreadKey(deviceID: device, paneID: "w1:p1")
+        let client = AgentReadState(defaults: defaults)
+        client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: device)
+        client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: device)
+        XCTAssertTrue(AgentReadState(defaults: defaults).unread.contains(key))
+        let other = AgentReadState(defaults: defaults, storageKey: "other-client")
+        XCTAssertFalse(other.unread.contains(key))
+    }
+
+    @MainActor
+    func testOnlyCurrentForegroundPresentedContentReadsCompletion() throws {
+        let suite = "read-state-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = AgentReadState(defaults: defaults)
+        let device = UUID()
+        let key = AgentUnreadKey(deviceID: device, paneID: "w1:p1")
+        client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: device)
+        let old = client.beginTerminal(key)
+        let current = client.beginTerminal(key)
+        client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: device)
+        client.presented(key, generation: old, foreground: true)
+        client.presented(key, generation: current, foreground: false)
+        XCTAssertTrue(client.unread.contains(key))
+        client.presented(key, generation: current, foreground: true)
+        XCTAssertFalse(client.unread.contains(key))
+        client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: device)
+        client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: device)
+        XCTAssertFalse(client.unread.contains(key))
+        client.hideTerminal(key, generation: current)
+        client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: device)
+        client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: device)
+        XCTAssertTrue(client.unread.contains(key))
+    }
+
     private func decodeDone(paneID: String) throws -> AgentInfo {
         try decodeAgent(paneID: paneID, status: "done")
     }

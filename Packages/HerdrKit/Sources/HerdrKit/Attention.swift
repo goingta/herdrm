@@ -25,7 +25,7 @@ public enum SpaceAttention: Equatable, Sendable {
 
 /// Keys a "finished while you weren't looking" flag. herdr has no viewed
 /// state; this lives entirely in the GUI.
-public struct AgentUnreadKey: Hashable, Sendable {
+public struct AgentUnreadKey: Hashable, Codable, Sendable {
     public let deviceID: UUID
     public let paneID: String
 
@@ -53,8 +53,6 @@ public enum AgentUnread: Sendable {
         next = next.filter { key in
             key.deviceID != deviceID || liveIDs.contains(key.paneID)
         }
-
-        guard !previous.isEmpty else { return next }
 
         for agent in agents {
             let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)
