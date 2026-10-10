@@ -58,10 +58,11 @@ public final class SSHConnection: Sendable {
 
     public static func connect(
         to endpoint: SSHEndpoint,
+        via httpConnectGateway: SSHEndpoint? = nil,
         timeout: Duration
     ) async throws -> SSHConnection {
         let driver = SessionDriver()
-        let hostKey = try await driver.handshake(endpoint: endpoint, timeout: timeout)
+        let hostKey = try await driver.handshake(endpoint: endpoint, httpConnectGateway: httpConnectGateway, timeout: timeout)
         return SSHConnection(driver: driver, hostKey: hostKey)
     }
 

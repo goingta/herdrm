@@ -377,6 +377,9 @@ struct DeviceEditorSheet: View {
     @State private var username = ""
     @State private var authMethod: MobileDevice.AuthMethod = .deviceKey
     @State private var password = ""
+    @State private var sshRoute: MobileDevice.SSHRoute = .direct
+    @State private var gatewayHost = ""
+    @State private var gatewayPort = "8080"
     @State private var socketPath = ""
     @State private var saveError: String?
     @State private var tailcatToken = ""
@@ -394,13 +397,17 @@ struct DeviceEditorSheet: View {
         _username = State(initialValue: device?.username ?? "")
         _authMethod = State(initialValue: device?.authMethod ?? .deviceKey)
         _socketPath = State(initialValue: device?.socketPath ?? "")
+        _sshRoute = State(initialValue: device?.sshRoute ?? .direct)
+        _gatewayHost = State(initialValue: device?.gatewayHost ?? "")
+        _gatewayPort = State(initialValue: String(device?.gatewayPort ?? 8080))
     }
 
     private var validationError: String? {
         guard kind == .ssh else { return nil }
         do {
             let parsed = try parsedSSHPort()
-            _ = try MobileDevice(name: name, host: host, port: parsed, username: username).validated()
+            _ = try MobileDevice(name: name, host: host, port: parsed, username: username,
+                sshRoute: sshRoute, gatewayHost: gatewayHost, gatewayPort: try parsedGatewayPort()).validated()
             if authMethod == .password, password.isEmpty, device?.authMethod != .password {
                 return MobileDeviceError.missingPassword.localizedDescription
             }
@@ -411,6 +418,14 @@ struct DeviceEditorSheet: View {
     private func parsedSSHPort() throws -> UInt16 {
         guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
             throw MobileDeviceError.invalidPort
+        }
+        return parsed
+    }
+
+    private func parsedGatewayPort() throws -> UInt16 {
+        guard sshRoute == .httpConnect else { return UInt16(gatewayPort) ?? 8080 }
+        guard let parsed = UInt16(gatewayPort.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
+            throw MobileDeviceError.invalidGatewayPort
         }
         return parsed
     }
@@ -483,6 +498,9 @@ struct DeviceEditorSheet: View {
                                     edited.username = username
                                     edited.authMethod = authMethod
                                     edited.socketPath = socketPath
+                                    edited.sshRoute = sshRoute
+                                    edited.gatewayHost = gatewayHost
+                                    edited.gatewayPort = try parsedGatewayPort()
                                 }
                                 try model.updateDevice(edited, password: password.isEmpty ? nil : password)
                             } else if kind == .ssh {
@@ -493,7 +511,10 @@ struct DeviceEditorSheet: View {
                                     username: username,
                                     authMethod: authMethod,
                                     password: password,
-                                    socketPath: socketPath
+                                    socketPath: socketPath,
+                                    sshRoute: sshRoute,
+                                    gatewayHost: gatewayHost,
+                                    gatewayPort: try parsedGatewayPort()
                                 )
                             } else {
                                 model.addTailcatDevice(name: name, token: tailcatToken)
@@ -560,6 +581,22 @@ struct DeviceEditorSheet: View {
 
     @ViewBuilder
     private var sshSections: some View {
+        Section(AppLocalization.string("SSH Network")) {
+            Picker(AppLocalization.string("SSH Route"), selection: $sshRoute) {
+                Text(AppLocalization.string("Direct Connection")).tag(MobileDevice.SSHRoute.direct)
+                Text(AppLocalization.string("HTTP CONNECT")).tag(MobileDevice.SSHRoute.httpConnect)
+            }
+            if sshRoute == .httpConnect {
+                TextField(AppLocalization.string("Gateway host or IP"), text: $gatewayHost)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                TextField(AppLocalization.string("Gateway port"), text: $gatewayPort)
+                    .keyboardType(.numberPad)
+                Text(AppLocalization.string("The gateway opens a tunnel to the SSH host above. SSH still verifies and authenticates the development machine."))
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
         Section(AppLocalization.string("SSH Login")) {
             TextField(AppLocalization.string("Username"), text: $username)
                 .textContentType(.username)
