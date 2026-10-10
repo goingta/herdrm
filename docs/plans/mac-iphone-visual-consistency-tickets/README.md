@@ -1,6 +1,6 @@
 # Mac 与 iPhone 视觉一致性：已发布任务索引
 
-2026-10-10。来源：[已确认规格 v1.0](../../specs/mac-iphone-visual-consistency.md)与 [ADR 0001](../../adr/0001-client-owned-agent-read-state.md)。用户已批准规格、六项拆分和依赖，任务已发布到 goingta/herdrm 的 GitHub Issues，均为 open、ready-for-agent；六项新任务及三项既有任务更新的正文与标签已回读核对。实施尚未开始。
+2026-10-10。来源：[已确认规格 v1.1](../../specs/mac-iphone-visual-consistency.md)与 [ADR 0001](../../adr/0001-client-owned-agent-read-state.md)。用户已批准规格、六项拆分和依赖，任务已发布到 goingta/herdrm 的 GitHub Issues，均为 open、ready-for-agent；六项新任务及三项既有任务更新的正文与标签已回读核对。实施在 `codex/mac-iphone-ui-integration` 集成分支进行，见 [PR #26](https://github.com/goingta/herdrm/pull/26)。#1 真机表单通过，#20/#21/#22/#24 及前置 #2/#12 已集成；#23 正按 v1.1 Space/真实 Tab/分屏菜单导航实施，#25 待最终双端验收。
 
 ## 任务与阻塞关系
 
