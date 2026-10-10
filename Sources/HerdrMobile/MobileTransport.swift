@@ -39,15 +39,15 @@ enum MobileTransportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .hostKeyChanged(let fingerprint):
-            return String(
-                localized: "This device's SSH host key changed (\(fingerprint)). If the host was reinstalled, remove and re-add the device."
+            return AppLocalization.string(
+                "This device's SSH host key changed (\(fingerprint)). If the host was reinstalled, remove and re-add the device."
             )
         case .missingPassword:
-            return String(localized: "No password saved for this device.")
+            return AppLocalization.string("No password saved for this device.")
         case .homeProbeFailed:
-            return String(localized: "Could not resolve the home directory on the device.")
+            return AppLocalization.string("Could not resolve the home directory on the device.")
         case .tailcatTerminalUnsupported:
-            return String(localized: "Terminal attach isn't available over tailcat on iOS yet — the tunnel carries herdr's control plane only.")
+            return AppLocalization.string("Terminal attach isn't available over tailcat on iOS yet — the tunnel carries herdr's control plane only.")
         }
     }
 }

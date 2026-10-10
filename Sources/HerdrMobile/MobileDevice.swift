@@ -77,7 +77,7 @@ struct MobileDevice: Codable, Identifiable, Hashable {
             result.socketPath = socket?.isEmpty == false ? socket : nil
         }
         if result.name.isEmpty {
-            result.name = isTailcat ? String(localized: "Tailcat device") : result.host
+            result.name = isTailcat ? AppLocalization.string("Tailcat device") : result.host
         }
         return result
     }
@@ -87,7 +87,7 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         case .ssh:
             return port == 22 ? "\(username)@\(host)" : "\(username)@\(host):\(port)"
         case .tailcat:
-            return String(localized: "Tailcat tunnel")
+            return AppLocalization.string("Tailcat tunnel")
         }
     }
 }
@@ -98,13 +98,13 @@ enum MobileDeviceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .emptyHost: return String(localized: "Enter a host or IP address.")
-        case .emptyUsername: return String(localized: "Enter an SSH username.")
-        case .invalidPort: return String(localized: "SSH port must be between 1 and 65535.")
-        case .deviceNotFound: return String(localized: "This device no longer exists. Reopen its settings.")
-        case .missingPassword: return String(localized: "Enter a password for this device.")
+        case .emptyHost: return AppLocalization.string("Enter a host or IP address.")
+        case .emptyUsername: return AppLocalization.string("Enter an SSH username.")
+        case .invalidPort: return AppLocalization.string("SSH port must be between 1 and 65535.")
+        case .deviceNotFound: return AppLocalization.string("This device no longer exists. Reopen its settings.")
+        case .missingPassword: return AppLocalization.string("Enter a password for this device.")
         case .keychain(let status):
-            return String(localized: "Could not update this device's saved credential (\(status)). Try again.")
+            return AppLocalization.string("Could not update this device's saved credential (\(status)). Try again.")
         }
     }
 }

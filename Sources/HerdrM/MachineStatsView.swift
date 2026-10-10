@@ -52,7 +52,7 @@ struct SidebarMachineStats: View {
         .buttonStyle(.plain)
         .focusEffectDisabled()
         .onHover { hovered = $0 }
-        .help(String(localized: "\(device.name) health — click for details"))
+        .help(AppLocalization.string("\(device.name) health — click for details"))
         .accessibilityLabel(accessibilityText)
         .background(WindowVisibilityReader(isVisible: $windowVisible))
         .task(id: WatchKey(device: device, visible: windowVisible)) {
@@ -66,11 +66,11 @@ struct SidebarMachineStats: View {
     }
 
     private var accessibilityText: String {
-        guard let snapshot else { return String(localized: "\(device.name) health") }
+        guard let snapshot else { return AppLocalization.string("\(device.name) health") }
         let cpu = snapshot.cpuPercent.map(MachineStatsFormat.percent) ?? "—"
         let ram = MachineStatsFormat.percent(snapshot.memFraction * 100)
         let disk = snapshot.fullestDisk.map { MachineStatsFormat.percent($0.fraction * 100) } ?? "—"
-        return String(localized: "\(device.name): CPU \(cpu), memory \(ram), disk \(disk)")
+        return AppLocalization.string("\(device.name): CPU \(cpu), memory \(ram), disk \(disk)")
     }
 }
 
@@ -242,13 +242,13 @@ struct MachineStatsPanel: View {
         guard let snapshot else { return device.subtitle }
         var parts: [String] = []
         if !snapshot.host.isEmpty { parts.append(snapshot.host) }
-        parts.append(String(localized: "\(snapshot.cpuCount) cores"))
+        parts.append(AppLocalization.string("\(snapshot.cpuCount) cores"))
         if let uptime = snapshot.uptime {
-            parts.append(String(localized: "up \(MachineStatsFormat.uptime(uptime))"))
+            parts.append(AppLocalization.string("up \(MachineStatsFormat.uptime(uptime))"))
         }
         if !snapshot.load.isEmpty {
             let load = snapshot.load.prefix(3).map { String(format: "%.2f", $0) }.joined(separator: " ")
-            parts.append(String(localized: "load \(load)"))
+            parts.append(AppLocalization.string("load \(load)"))
         }
         return parts.joined(separator: " · ")
     }
@@ -287,13 +287,13 @@ struct MachineStatsPanel: View {
             )
             ResourceBar(
                 title: "RAM",
-                value: String(localized: "\(MachineStatsFormat.bytes(snapshot.memUsedBytes)) of \(MachineStatsFormat.bytes(snapshot.memTotalBytes))"),
+                value: AppLocalization.string("\(MachineStatsFormat.bytes(snapshot.memUsedBytes)) of \(MachineStatsFormat.bytes(snapshot.memTotalBytes))"),
                 percent: snapshot.memFraction * 100
             )
             if snapshot.swapTotalBytes > 0, snapshot.swapUsedBytes > 0 {
                 ResourceBar(
-                    title: String(localized: "Swap"),
-                    value: String(localized: "\(MachineStatsFormat.bytes(snapshot.swapUsedBytes)) of \(MachineStatsFormat.bytes(snapshot.swapTotalBytes))"),
+                    title: AppLocalization.string("Swap"),
+                    value: AppLocalization.string("\(MachineStatsFormat.bytes(snapshot.swapUsedBytes)) of \(MachineStatsFormat.bytes(snapshot.swapTotalBytes))"),
                     percent: Double(snapshot.swapUsedBytes) / Double(snapshot.swapTotalBytes) * 100,
                     compact: true
                 )
@@ -301,9 +301,9 @@ struct MachineStatsPanel: View {
             ForEach(snapshot.disks) { disk in
                 ResourceBar(
                     title: snapshot.disks.count > 1
-                        ? String(localized: "Disk \(disk.mount)")
-                        : String(localized: "Disk"),
-                    value: String(localized: "\(MachineStatsFormat.bytes(disk.usedBytes)) of \(MachineStatsFormat.bytes(disk.totalBytes))"),
+                        ? AppLocalization.string("Disk \(disk.mount)")
+                        : AppLocalization.string("Disk"),
+                    value: AppLocalization.string("\(MachineStatsFormat.bytes(disk.usedBytes)) of \(MachineStatsFormat.bytes(disk.totalBytes))"),
                     percent: disk.fraction * 100
                 )
             }
@@ -385,7 +385,7 @@ struct MachineStatsPanel: View {
         let paneID = stats.paneID(for: instance)
         let agent = paneID.flatMap { id in agents.first { $0.paneID == id } }
         let title = agent.map { model.agentEntry(device: device, agent: $0).title }
-            ?? String(localized: "Outside herdr · pid \(String(instance.rootPID))")
+            ?? AppLocalization.string("Outside herdr · pid \(String(instance.rootPID))")
         let isSelected = paneID != nil && model.selectedPane == PaneRef(deviceID: device.id, paneID: paneID!)
         return UsageRow(
             icon: nil,
@@ -403,15 +403,15 @@ struct MachineStatsPanel: View {
             }
         )
         .help(agent == nil
-            ? String(localized: "Not running in a herdr pane on this device")
-            : String(localized: "Show this agent"))
+            ? AppLocalization.string("Not running in a herdr pane on this device")
+            : AppLocalization.string("Show this agent"))
     }
 
     @ViewBuilder
     private func otherRows(_ snapshot: MachineSnapshot) -> some View {
         UsageRow(
             icon: .symbol("ellipsis.circle"),
-            title: String(localized: "Everything else"),
+            title: AppLocalization.string("Everything else"),
             count: snapshot.other.processCount,
             countIsProcesses: true,
             usage: snapshot.other,
@@ -601,7 +601,7 @@ private struct UsageRow: View {
                 .truncationMode(.tail)
                 .layoutPriority(1)
             if let count {
-                Text(countIsProcesses ? String(localized: "\(count) proc") : "×\(count)")
+                Text(countIsProcesses ? AppLocalization.string("\(count) proc") : "×\(count)")
                     .font(.system(size: 10.5).monospacedDigit())
                     .foregroundStyle(Theme.textGhost)
                     .fixedSize()

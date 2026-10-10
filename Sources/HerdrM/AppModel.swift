@@ -390,7 +390,7 @@ final class AppModel: ObservableObject {
                 let basename = URL(fileURLWithPath: cwd).lastPathComponent
                 if !basename.isEmpty { return basename }
             }
-            return String(localized: "Terminal")
+            return AppLocalization.string("Terminal")
         }
     }
 
@@ -685,7 +685,7 @@ final class AppModel: ObservableObject {
         let n = shellSessions.count + 1
         let session = ShellSession(
             id: UUID(),
-            title: String(localized: "Terminal \(n)"),
+            title: AppLocalization.string("Terminal \(n)"),
             device: device
         )
         shellSessions.append(session)
@@ -900,7 +900,7 @@ final class AppModel: ObservableObject {
     /// Moves Claude on `device` to `account` with grazr, like its swap action
     /// but to the account picked rather than the next one with headroom.
     func switchGrazrAccount(_ account: GrazrAccount, on device: Device, onFinish: (() -> Void)? = nil) {
-        let title = String(localized: "grazr: switch to \(account.name)")
+        let title = AppLocalization.string("grazr: switch to \(account.name)")
         Task {
             defer { onFinish?() }
             do {
@@ -909,12 +909,12 @@ final class AppModel: ObservableObject {
                 if result.ok {
                     NotificationManager.shared.postPluginResult(
                         title: title,
-                        body: result.summary ?? String(localized: "Done"),
+                        body: result.summary ?? AppLocalization.string("Done"),
                         deviceName: device.name
                     )
                 } else {
                     actionError = result.summary.map { "\(title): \($0)" }
-                        ?? String(localized: "\(title) failed")
+                        ?? AppLocalization.string("\(title) failed")
                 }
             } catch {
                 actionError = actionErrorMessage(error, device: device)
@@ -940,7 +940,7 @@ final class AppModel: ObservableObject {
                 let paneID = try await service.createTab(
                     workspaceID: workspaceID,
                     cwd: nil,
-                    label: String(localized: "grazr sign-in")
+                    label: AppLocalization.string("grazr sign-in")
                 )
                 // Typed once the shell has drawn its prompt; a prompt still
                 // starting up can drop what arrives before it.
@@ -1119,7 +1119,7 @@ final class AppModel: ObservableObject {
     func cancelSSHAuthentication(for request: SSHAuthenticationRequest) {
         sshAuthenticationRequest = nil
         sessions[request.deviceID]?.connection =
-            .failed(String(localized: "Authentication cancelled — choose Reconnect to try again"))
+            .failed(AppLocalization.string("Authentication cancelled — choose Reconnect to try again"))
     }
 
     var hasReconnectableDevice: Bool {
@@ -1459,13 +1459,13 @@ final class AppModel: ObservableObject {
         else { return error.localizedDescription }
         switch session(device.id).connection {
         case .connecting:
-            return String(localized: "Still connecting to \(device.name) — try again in a moment.")
+            return AppLocalization.string("Still connecting to \(device.name) — try again in a moment.")
         case .failed(let reason):
-            return String(localized: "\(device.name) is unreachable: \(reason)")
+            return AppLocalization.string("\(device.name) is unreachable: \(reason)")
         case .idle:
-            return String(localized: "\(device.name) isn't connected.")
+            return AppLocalization.string("\(device.name) isn't connected.")
         case .connected:
-            return String(localized: "\(device.name) just reconnected — try again.")
+            return AppLocalization.string("\(device.name) just reconnected — try again.")
         }
     }
 
@@ -1496,8 +1496,8 @@ final class AppModel: ObservableObject {
 
     func requestCloseSpace(_ entry: SpaceEntry) {
         closeRequest = CloseRequest(
-            title: String(localized: "Close space \"\(entry.workspace.label)\" on \(entry.device.name)?"),
-            message: String(localized: "All terminals and agents in this space will be closed.")
+            title: AppLocalization.string("Close space \"\(entry.workspace.label)\" on \(entry.device.name)?"),
+            message: AppLocalization.string("All terminals and agents in this space will be closed.")
         ) { [weak self] in
             guard let self else { return }
             Task {
@@ -1517,12 +1517,12 @@ final class AppModel: ObservableObject {
         guard let device = device(ref.deviceID) else { return }
         let message: String
         if let space = spaceClosedWithPane(ref) {
-            message = String(localized: "It is the last pane in the space \"\(space)\", so herdr closes the space too. Whatever is running inside it will be terminated.")
+            message = AppLocalization.string("It is the last pane in the space \"\(space)\", so herdr closes the space too. Whatever is running inside it will be terminated.")
         } else {
-            message = String(localized: "The pane and whatever is running inside it will be terminated.")
+            message = AppLocalization.string("The pane and whatever is running inside it will be terminated.")
         }
         closeRequest = CloseRequest(
-            title: String(localized: "Close \"\(name)\"?"),
+            title: AppLocalization.string("Close \"\(name)\"?"),
             message: message
         ) { [weak self] in
             guard let self else { return }
@@ -1606,12 +1606,12 @@ final class AppModel: ObservableObject {
                     if log.succeeded {
                         NotificationManager.shared.postPluginResult(
                             title: action.title,
-                            body: log.summary ?? String(localized: "Done"),
+                            body: log.summary ?? AppLocalization.string("Done"),
                             deviceName: device.name
                         )
                     } else {
                         actionError = log.summary.map { "\(action.title): \($0)" }
-                            ?? String(localized: "\(action.title) failed")
+                            ?? AppLocalization.string("\(action.title) failed")
                     }
                     break
                 }

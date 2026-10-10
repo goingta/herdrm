@@ -212,7 +212,7 @@ final class MobileDeviceSession {
             // UI offers Reconnect instead of silently going stale.
             guard let self, !Task.isCancelled else { return }
             if case .connected = self.state {
-                self.state = .failed(String(localized: "Connection lost"))
+                self.state = .failed(AppLocalization.string("Connection lost"))
                 self.onChange?()
             }
         }
@@ -440,7 +440,7 @@ final class MobileAppModel {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let device = MobileDevice(
             kind: .tailcat,
-            name: trimmedName.isEmpty ? String(localized: "Tailcat device") : trimmedName
+            name: trimmedName.isEmpty ? AppLocalization.string("Tailcat device") : trimmedName
         )
         do {
             try TailcatCredentialStore.setToken(token, for: device.id)
@@ -597,6 +597,6 @@ final class MobileAppModel {
             return label
         }
         if let title = pane.terminalTitle, !title.isEmpty { return title }
-        return String(localized: "Terminal")
+        return AppLocalization.string("Terminal")
     }
 }

@@ -300,11 +300,11 @@ struct GrazrAccountsDial: View {
     private func swapText(for account: GrazrAccount) -> String {
         if let eta = report.swapEstimate(for: account, now: now) {
             return eta <= now
-                ? String(localized: "below the threshold, swaps next turn")
-                : String(localized: "swaps ~\(GrazrStyle.time(eta, now: now))")
+                ? AppLocalization.string("below the threshold, swaps next turn")
+                : AppLocalization.string("swaps ~\(GrazrStyle.time(eta, now: now))")
         }
         let used = account.windows.contains { report.threshold(for: $0) != nil && $0.isOpen(now: now) && $0.remaining < 100 }
-        return used ? String(localized: "refills before it runs out") : String(localized: "no pace yet")
+        return used ? AppLocalization.string("refills before it runs out") : AppLocalization.string("no pace yet")
     }
 
     /// When an account that is spent now is full again, if that is later.
@@ -314,21 +314,21 @@ struct GrazrAccountsDial: View {
 
     private var nextText: String {
         if let next {
-            guard let refill = futureRefill(of: next) else { return String(localized: "next ▸ \(next.name)") }
-            return String(localized: "next ▸ \(next.name), refills \(GrazrStyle.time(refill, now: now))")
+            guard let refill = futureRefill(of: next) else { return AppLocalization.string("next ▸ \(next.name)") }
+            return AppLocalization.string("next ▸ \(next.name), refills \(GrazrStyle.time(refill, now: now))")
         }
         if let refill = report.nextHeadroom(now: now) {
-            return String(localized: "nothing to swap to · \(refill.account.name) refills \(GrazrStyle.time(refill.at, now: now))")
+            return AppLocalization.string("nothing to swap to · \(refill.account.name) refills \(GrazrStyle.time(refill.at, now: now))")
         }
-        return String(localized: "nothing to swap to")
+        return AppLocalization.string("nothing to swap to")
     }
 
     private var accessibilitySummary: String {
         guard let active else { return nextText }
-        let left = (active.window(window)?.left(now: now)).map { String(localized: "\($0)% left") }
-            ?? String(localized: "no reading yet")
+        let left = (active.window(window)?.left(now: now)).map { AppLocalization.string("\($0)% left") }
+            ?? AppLocalization.string("no reading yet")
         let modelsLeft = models.compactMap { scope in
-            active.modelWindow(scope).map { String(localized: "\(scope) \($0.left(now: now))% left") }
+            active.modelWindow(scope).map { AppLocalization.string("\(scope) \($0.left(now: now))% left") }
         }
         return ([active.name, left] + modelsLeft + [swapText(for: active), nextText]).joined(separator: ", ")
     }
@@ -401,14 +401,14 @@ struct GrazrAccountsDial: View {
         } else {
             account.window(window)
         }
-        let title = model ?? (window == .week ? String(localized: "All models") : String(localized: "5-hour window"))
+        let title = model ?? (window == .week ? AppLocalization.string("All models") : AppLocalization.string("5-hour window"))
         let left = reading?.left(now: now)
         return GrazrTipBox {
             HStack(spacing: 6) {
                 Text(title)
                     .fontWeight(.semibold)
                     .foregroundStyle(Theme.text)
-                Text(left.map { String(localized: "\($0)% left") } ?? String(localized: "no reading yet"))
+                Text(left.map { AppLocalization.string("\($0)% left") } ?? AppLocalization.string("no reading yet"))
                     .monospacedDigit()
                     .foregroundStyle(left.map { GrazrStyle.tint(left: $0, threshold: reading.flatMap(report.threshold(for:))) } ?? Theme.textTertiary)
             }
@@ -417,8 +417,8 @@ struct GrazrAccountsDial: View {
             // The tick on the ring: where grazr moves off this account.
             if let threshold = reading.flatMap(report.threshold(for:)) {
                 Text(left.map { $0 < threshold } == true
-                     ? String(localized: "below the \(threshold)% swap tick")
-                     : String(localized: "tick: grazr swaps below \(threshold)%"))
+                     ? AppLocalization.string("below the \(threshold)% swap tick")
+                     : AppLocalization.string("tick: grazr swaps below \(threshold)%"))
                     .foregroundStyle(left.map { $0 < threshold } == true ? Theme.warning : Theme.textSecondary)
             }
             if let reading, let resetsAt = reading.resetsAt, reading.isOpen(now: now) {
