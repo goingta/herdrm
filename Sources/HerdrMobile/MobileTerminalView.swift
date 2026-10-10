@@ -463,6 +463,7 @@ struct MobileTerminalScreen: View {
                     .frame(width: 34, height: 30)
                     .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
             }
+            .accessibilityIdentifier("agent.keyboard")
             .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
         }
     }
@@ -481,6 +482,7 @@ struct MobileTerminalScreen: View {
             .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 10))
             .foregroundStyle(Theme.text)
             .tint(Theme.accent)
+            .accessibilityIdentifier("agent.composer")
             .onSubmit(sendPrompt)
 
             Button(action: sendPrompt) {
@@ -560,7 +562,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
         session.setLightColorsEnabled(colorScheme == .light)
         session.presentationVisible = presentationVisible
         uiView.setSurfaceVisible(presentationVisible)
-        if keyboardShown && presentationVisible {
+        if keyboardShown && presentationVisible && UIApplication.shared.applicationState == .active {
             uiView.acquireProgrammaticFocus()
         } else if uiView.isFirstResponder {
             uiView.resignFirstResponder()
