@@ -30,6 +30,9 @@ final class MobileDeviceSession {
     private var connectToken: UUID?
 
     var onChange: (() -> Void)?
+    var onAgents: (([AgentInfo], Bool) -> Void)?
+    var onConnectionLost: (() -> Void)?
+    private(set) var connectionID = UUID()
 
     init(device: MobileDevice, connector: @escaping MobileTransportConnector) {
         self.device = device
@@ -41,6 +44,8 @@ final class MobileDeviceSession {
         guard case .connecting = state else {
             let token = UUID()
             connectToken = token
+            connectionID = UUID()
+            onConnectionLost?()
             state = .connecting
             let oldTransport = self.transport
             self.transport = nil
@@ -95,6 +100,7 @@ final class MobileDeviceSession {
     }
 
     private func invalidateConnection() -> MobileTransport? {
+        onConnectionLost?()
         connectToken = nil
         eventTask?.cancel()
         eventTask = nil
@@ -152,6 +158,7 @@ final class MobileDeviceSession {
                 refreshRequested = true
                 return true
             }
+            onAgents?(fetched.agents, true)
             snapshot = fetched
             onChange?()
             return true
@@ -212,6 +219,7 @@ final class MobileDeviceSession {
             // UI offers Reconnect instead of silently going stale.
             guard let self, !Task.isCancelled else { return }
             if case .connected = self.state {
+                self.onConnectionLost?()
                 self.state = .failed(AppLocalization.string("Connection lost"))
                 self.onChange?()
             }
@@ -252,6 +260,7 @@ final class MobileDeviceSession {
                   status: AgentStatus(wire: statusRaw)
               )
         else { return false }
+        if let agent = updated.agents.first(where: { $0.paneID == paneID }) { onAgents?([agent], false) }
         snapshot = updated
         statusGeneration &+= 1
         onChange?()
@@ -278,6 +287,7 @@ final class MobileAppModel {
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
+    let agentReadState: AgentReadState
     private let store: MobileDeviceStore
     private let connector: MobileTransportConnector
     private var sessions: [UUID: MobileDeviceSession] = [:]
@@ -285,12 +295,13 @@ final class MobileAppModel {
     private var connectionTaskToken: UUID?
     private var closingTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
-    init(store: MobileDeviceStore? = nil, connector: @escaping MobileTransportConnector = { device in
+    init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil, connector: @escaping MobileTransportConnector = { device in
         switch device.kind {
         case .ssh: return try await SSHDirectTransport.connect(device: device)
         case .tailcat: return try await TailcatMobileTransport.connect(device: device)
         }
     }) {
+        agentReadState = readState ?? AgentReadState()
         self.store = store ?? MobileDeviceStore()
         self.connector = connector
         devices = self.store.load()
@@ -306,6 +317,14 @@ final class MobileAppModel {
         guard let device = devices.first(where: { $0.id == deviceID }) else { return nil }
         let session = MobileDeviceSession(device: device, connector: connector)
         session.onChange = { [weak self] in self?.revision += 1 }
+        session.onAgents = { [weak self] agents, authoritative in
+            self?.agentReadState.apply(agents: agents, deviceID: deviceID, authoritative: authoritative,
+                                      foreground: UIApplication.shared.applicationState == .active)
+            self?.revision += 1
+        }
+        session.onConnectionLost = { [weak self] in
+            self?.agentReadState.connectionLost(deviceID: deviceID)
+        }
         sessions[deviceID] = session
         return session
     }
@@ -517,6 +536,7 @@ final class MobileAppModel {
             TailcatCredentialStore.removeToken(for: device.id)
             Task { await TailcatBridgeManager.shared.tearDown(deviceID: device.id) }
         }
+        agentReadState.removeDevice(device.id)
         devices.removeAll { $0.id == device.id }
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
@@ -531,6 +551,21 @@ final class MobileAppModel {
             connectSelected()
         }
     }
+
+    func isUnread(_ agent: AgentInfo) -> Bool {
+        _ = revision
+        guard let selectedDeviceID else { return false }
+        return agentReadState.unread.contains(AgentUnreadKey(deviceID: selectedDeviceID, paneID: agent.paneID))
+    }
+
+    func attention(for spaceID: String) -> SpaceAttention {
+        _ = revision
+        return SpaceAttention.rollup((selectedSession?.snapshot?.agents ?? [])
+            .filter { $0.workspaceID == spaceID }
+            .map { (status: $0.status, unreadDone: isUnread($0)) })
+    }
+
+    func terminalReadStateChanged() { revision += 1 }
 
     // MARK: - Derived lists (mirror the Mac sidebar)
 

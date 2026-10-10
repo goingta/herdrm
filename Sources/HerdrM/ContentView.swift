@@ -683,7 +683,10 @@ struct DetailView: View {
                 isVisible: isSelected && model.selectedShellID == nil && !model.isFileManagerActive,
                 onAttachmentError: { model.actionError = $0 },
                 onAttachmentUploadingChanged: { uploadingAttachment = $0 },
-                onExit: { code in endedAttach[session.id] = code }
+                onExit: { code in endedAttach[session.id] = code },
+                readState: model.agentReadState,
+                unreadKey: AgentUnreadKey(deviceID: session.ref.deviceID, paneID: session.ref.paneID),
+                onReadStateChanged: { model.publishReadState() }
             )
                 // Keyed on the retry generation only — NOT colorScheme. A theme toggle
                 // must re-theme live via updateNSView (as the split shell already does);

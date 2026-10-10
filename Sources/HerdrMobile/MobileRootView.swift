@@ -35,9 +35,12 @@ struct MobileRootView: View {
                     transport: transport,
                     target: .agent(paneID: agent.paneID),
                     paneID: agent.paneID,
-                    title: agent.title(tabLabel: model.tabLabel(for: agent))
+                    title: agent.title(tabLabel: model.tabLabel(for: agent)),
+                    readState: model.agentReadState,
+                    unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
+                    onReadStateChanged: { model.terminalReadStateChanged() }
                 )
-                .id(agent.paneID)
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(agent.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
             } else if let pane = model.selectedTerminalPane,
                       let terminalID = pane.terminalID,
                       let transport = model.selectedSession?.transport {
@@ -47,7 +50,7 @@ struct MobileRootView: View {
                     paneID: pane.paneID,
                     title: model.terminalLabel(for: pane)
                 )
-                .id(pane.paneID)
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
             } else {
                 ContentUnavailableView(
                     AppLocalization.string("No Agent Selected"),
@@ -204,7 +207,8 @@ private struct SidebarListView: View {
                     AgentRow(
                         agent: agent,
                         title: agent.title(tabLabel: model.tabLabel(for: agent)),
-                        spaceName: model.spaceName(for: agent.workspaceID)
+                        spaceName: model.spaceName(for: agent.workspaceID),
+                        unread: model.isUnread(agent)
                     )
                 }
             }
@@ -239,10 +243,16 @@ private struct AgentRow: View {
     let agent: AgentInfo
     let title: String
     let spaceName: String
+    var unread = false
 
     var body: some View {
         HStack(spacing: 10) {
-            StatusGlyph(status: agent.status)
+            if unread && agent.status == .done {
+                Circle().fill(.blue).frame(width: 8, height: 8).frame(width: 20)
+                    .accessibilityLabel(AppLocalization.string("Completed, unread"))
+            } else {
+                StatusGlyph(status: agent.status)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .lineLimit(1)
