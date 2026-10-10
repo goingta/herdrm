@@ -5661,6 +5661,23 @@
           }
         }
       }
+    },
+    "Completed, unread": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed, unread"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成，未读"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
