@@ -1,6 +1,12 @@
 # iPhone 远端开发：已发布任务索引
 
-2026-10-10。来源：[规格 v0.4](../../specs/iphone-remote-development.md)。用户已批准 18 项拆分、GitHub Issues 和默认标签；任务已发布到 goingta/herdrm，均为 open、ready-for-agent，正文和标签已回读核对。实施尚未开始。
+2026-10-10。来源：[规格 v0.4](../../specs/iphone-remote-development.md)。用户已批准 18 项拆分、GitHub Issues 和默认标签；发布时均为 open、ready-for-agent，正文和标签已回读核对。#1 代码与 8 项自动验证已完成，参见 [PR #19](https://github.com/goingta/herdrm/pull/19)，真机表单验收仍待完成。
+
+## 最新实施优先级
+
+用户已确认[Mac 与 iPhone 的视觉一致性补充](../../specs/mac-iphone-visual-consistency.md)：先完成 #1 真机表单验收，再交付独立的 Logo、共享主题、语言/外观设置与基础组件工作，随后继续 #2 → #18。各页面在相应功能任务中接入统一视觉，完成未读行为单独衔接 #6 与 #8/#11，最终截图对比纳入 #18。
+
+新增工作尚未拆成 GitHub Issue，不为它预分配 Issue 编号，也未修改现有 GitHub 依赖关系。上述是实施优先级调整，原有功能之间的依赖继续适用。
 
 ## GitHub 任务与阻塞关系
 
