@@ -173,6 +173,23 @@ targets:
         ARCHS: arm64
         EXCLUDED_ARCHS__sdk_iphonesimulator__: x86_64
 
+  HerdrMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - Tests/HerdrMobileUITests
+    dependencies:
+      - target: HerdrMobile
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.ios.uitests
+        TEST_TARGET_NAME: HerdrMobile
+        SWIFT_VERSION: "5.10"
+        ARCHS: arm64
+        EXCLUDED_ARCHS__sdk_iphonesimulator__: x86_64
+
   HerdrMTests:
     type: bundle.unit-test
     platform: macOS
@@ -202,6 +219,15 @@ schemes:
       config: Debug
       targets:
         - HerdrMobileTests
+  HerdrMobileUIAcceptance:
+    build:
+      targets:
+        HerdrMobile: all
+        HerdrMobileUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - HerdrMobileUITests
   HerdrM:
     build:
       targets:

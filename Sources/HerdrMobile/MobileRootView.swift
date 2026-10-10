@@ -108,6 +108,7 @@ private struct SidebarListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityIdentifier("device.add")
             }
         }
         .refreshable {
@@ -320,14 +321,18 @@ private struct DeviceSwitcherMenu: View {
                             Text(candidate.name)
                         }
                     }
+                    .accessibilityIdentifier("device.select.\(candidate.id.uuidString)")
                 }
                 Divider()
                 Button(AppLocalization.string("Add Device…")) { model.showAddDevice = true }
+                    .accessibilityIdentifier("device.add.menu")
                 if let selected = model.selectedDevice {
                     Button(AppLocalization.string("Edit Device…")) { model.editingDevice = selected }
+                        .accessibilityIdentifier("device.edit")
                     Button(AppLocalization.string("Remove \(selected.name)"), role: .destructive) {
                         confirmRemove = true
                     }
+                    .accessibilityIdentifier("device.remove")
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -340,11 +345,13 @@ private struct DeviceSwitcherMenu: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityIdentifier("devices.menu")
             .confirmationDialog(AppLocalization.string("Remove this device?"), isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button(AppLocalization.string("Remove Device"), role: .destructive) {
                     do { try model.removeDevice(device) }
                     catch { removalError = error.localizedDescription }
                 }
+                .accessibilityIdentifier("device.remove.confirm")
             } message: {
                 Text(AppLocalization.string("This removes its local configuration and credentials. The phone's shared SSH key is kept. To revoke remote access, remove this phone's public key from the server's authorized_keys separately."))
             }
@@ -462,14 +469,17 @@ struct DeviceEditorSheet: View {
 
                 Section(AppLocalization.string("Device")) {
                     TextField(AppLocalization.string("Name (optional)"), text: $name)
+                        .accessibilityIdentifier("device.name")
                     if kind == .ssh {
                         TextField(AppLocalization.string("Host or IP"), text: $host)
                             .textContentType(.URL)
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .accessibilityIdentifier("device.host")
                         TextField(AppLocalization.string("Port"), text: $port)
                             .keyboardType(.numberPad)
+                            .accessibilityIdentifier("device.port")
                     }
                 }
 
@@ -496,6 +506,7 @@ struct DeviceEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .accessibilityIdentifier("device.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(device == nil ? AppLocalization.string("Add") : AppLocalization.string("Save")) {
@@ -535,6 +546,7 @@ struct DeviceEditorSheet: View {
                         }
                     }
                     .disabled(!canAdd)
+                    .accessibilityIdentifier("device.save")
                 }
             }
             .alert(AppLocalization.string("Could Not Save Device"), isPresented: Binding(
@@ -612,6 +624,7 @@ struct DeviceEditorSheet: View {
                 .textContentType(.username)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .accessibilityIdentifier("device.username")
             Picker(AppLocalization.string("Authentication"), selection: $authMethod) {
                 Text(AppLocalization.string("Device Key")).tag(MobileDevice.AuthMethod.deviceKey)
                 Text(AppLocalization.string("Password")).tag(MobileDevice.AuthMethod.password)
