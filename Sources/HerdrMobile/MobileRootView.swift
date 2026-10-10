@@ -48,7 +48,10 @@ struct MobileRootView: View {
             }
         }
         .sheet(isPresented: $model.showAddDevice) {
-            AddDeviceSheet(model: model)
+            DeviceEditorSheet(model: model)
+        }
+        .sheet(item: $model.editingDevice) { device in
+            DeviceEditorSheet(model: model, device: device)
         }
         .task {
             if model.selectedDeviceID != nil { model.connectSelected() }
@@ -279,6 +282,8 @@ private struct StatusGlyph: View {
 /// the device list, add, and remove actions in its menu.
 private struct DeviceSwitcherMenu: View {
     @Bindable var model: MobileAppModel
+    @State private var confirmRemove = false
+    @State private var removalError: String?
 
     var body: some View {
         if let device = model.selectedDevice {
@@ -297,8 +302,9 @@ private struct DeviceSwitcherMenu: View {
                 Divider()
                 Button(String(localized: "Add Device…")) { model.showAddDevice = true }
                 if let selected = model.selectedDevice {
+                    Button(String(localized: "Edit Device…")) { model.editingDevice = selected }
                     Button(String(localized: "Remove \(selected.name)"), role: .destructive) {
-                        model.removeDevice(selected)
+                        confirmRemove = true
                     }
                 }
             } label: {
@@ -312,6 +318,19 @@ private struct DeviceSwitcherMenu: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .confirmationDialog(String(localized: "Remove this device?"), isPresented: $confirmRemove, titleVisibility: .visible) {
+                Button(String(localized: "Remove Device"), role: .destructive) {
+                    do { try model.removeDevice(device) }
+                    catch { removalError = error.localizedDescription }
+                }
+            } message: {
+                Text(String(localized: "This removes its local configuration and credentials. The phone's shared SSH key is kept. To revoke remote access, remove this phone's public key from the server's authorized_keys separately."))
+            }
+            .alert(String(localized: "Could Not Remove Device"), isPresented: Binding(
+                get: { removalError != nil }, set: { if !$0 { removalError = nil } }
+            )) {
+                Button(String(localized: "OK"), role: .cancel) { removalError = nil }
+            } message: { Text(removalError ?? "") }
         }
     }
 }
@@ -335,8 +354,9 @@ private struct ConnectionDot: View {
     }
 }
 
-struct AddDeviceSheet: View {
+struct DeviceEditorSheet: View {
     @Bindable var model: MobileAppModel
+    let device: MobileDevice?
     @Environment(\.dismiss) private var dismiss
     @State private var kind: MobileDevice.Kind = .ssh
     @State private var name = ""
@@ -345,20 +365,50 @@ struct AddDeviceSheet: View {
     @State private var username = ""
     @State private var authMethod: MobileDevice.AuthMethod = .deviceKey
     @State private var password = ""
+    @State private var socketPath = ""
+    @State private var saveError: String?
     @State private var tailcatToken = ""
     @State private var copiedKey = false
     @State private var copiedClientKey = false
     @State private var confirmRegenerateClientKey = false
 
+    init(model: MobileAppModel, device: MobileDevice? = nil) {
+        self.model = model
+        self.device = device
+        _kind = State(initialValue: device?.kind ?? .ssh)
+        _name = State(initialValue: device?.name ?? "")
+        _host = State(initialValue: device?.host ?? "")
+        _port = State(initialValue: String(device?.port ?? 22))
+        _username = State(initialValue: device?.username ?? "")
+        _authMethod = State(initialValue: device?.authMethod ?? .deviceKey)
+        _socketPath = State(initialValue: device?.socketPath ?? "")
+    }
+
+    private var validationError: String? {
+        guard kind == .ssh else { return nil }
+        do {
+            let parsed = try parsedSSHPort()
+            _ = try MobileDevice(name: name, host: host, port: parsed, username: username).validated()
+            if authMethod == .password, password.isEmpty, device?.authMethod != .password {
+                return MobileDeviceError.missingPassword.localizedDescription
+            }
+            return nil
+        } catch { return error.localizedDescription }
+    }
+
+    private func parsedSSHPort() throws -> UInt16 {
+        guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
+            throw MobileDeviceError.invalidPort
+        }
+        return parsed
+    }
+
     private var canAdd: Bool {
         switch kind {
         case .ssh:
-            return !host.trimmingCharacters(in: .whitespaces).isEmpty
-                && !username.trimmingCharacters(in: .whitespaces).isEmpty
-                && (authMethod == .deviceKey || !password.isEmpty)
-                && UInt16(port) != nil
+            return validationError == nil
         case .tailcat:
-            return !tailcatToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return device != nil || !tailcatToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -370,6 +420,7 @@ struct AddDeviceSheet: View {
                         Text(String(localized: "SSH")).tag(MobileDevice.Kind.ssh)
                         Text(String(localized: "Tailcat")).tag(MobileDevice.Kind.tailcat)
                     }
+                    .disabled(device != nil)
                 }
 
                 Section(String(localized: "Device")) {
@@ -385,7 +436,7 @@ struct AddDeviceSheet: View {
                     }
                 }
 
-                if kind == .tailcat {
+                if kind == .tailcat, device == nil {
                     Section {
                         SecureField(String(localized: "Token"), text: $tailcatToken)
                             .autocorrectionDisabled()
@@ -396,36 +447,58 @@ struct AddDeviceSheet: View {
                         Text(String(localized: "From the host: herdr plugin action invoke herdr.tailcat.token — the token is stored in this device's Keychain, and the tunnel needs no SSH."))
                     }
                     tailcatClientKeySection
-                } else {
+                } else if kind == .ssh {
                     sshSections
                 }
+                if let validationError {
+                    Section { Text(validationError).foregroundStyle(.red).font(.footnote) }
+                }
             }
-            .navigationTitle(String(localized: "Add Device"))
+            .navigationTitle(device == nil ? String(localized: "Add Device") : String(localized: "Edit Device"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "Add")) {
-                        switch kind {
-                        case .ssh:
-                            model.addDevice(
-                                name: name,
-                                host: host,
-                                port: UInt16(port) ?? 22,
-                                username: username,
-                                authMethod: authMethod,
-                                password: password
-                            )
-                        case .tailcat:
-                            model.addTailcatDevice(name: name, token: tailcatToken)
+                    Button(device == nil ? String(localized: "Add") : String(localized: "Save")) {
+                        do {
+                            if var edited = device {
+                                edited.name = name
+                                if kind == .ssh {
+                                    edited.host = host
+                                    edited.port = try parsedSSHPort()
+                                    edited.username = username
+                                    edited.authMethod = authMethod
+                                    edited.socketPath = socketPath
+                                }
+                                try model.updateDevice(edited, password: password.isEmpty ? nil : password)
+                            } else if kind == .ssh {
+                                try model.addDevice(
+                                    name: name,
+                                    host: host,
+                                    port: try parsedSSHPort(),
+                                    username: username,
+                                    authMethod: authMethod,
+                                    password: password,
+                                    socketPath: socketPath
+                                )
+                            } else {
+                                model.addTailcatDevice(name: name, token: tailcatToken)
+                            }
+                            dismiss()
+                        } catch {
+                            saveError = error.localizedDescription
                         }
-                        dismiss()
                     }
                     .disabled(!canAdd)
                 }
             }
+            .alert(String(localized: "Could Not Save Device"), isPresented: Binding(
+                get: { saveError != nil }, set: { if !$0 { saveError = nil } }
+            )) {
+                Button(String(localized: "OK"), role: .cancel) { saveError = nil }
+            } message: { Text(saveError ?? "") }
         }
     }
 
@@ -487,7 +560,20 @@ struct AddDeviceSheet: View {
             if authMethod == .password {
                 SecureField(String(localized: "Password"), text: $password)
                     .textContentType(.password)
+                if device?.authMethod == .password {
+                    Text(String(localized: "Leave blank to keep the saved password."))
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             }
+        }
+        Section {
+            TextField(String(localized: "Socket path (optional)"), text: $socketPath)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        } header: {
+            Text(String(localized: "Herdr Socket"))
+        } footer: {
+            Text(String(localized: "Leave blank for the remote user's default socket. Otherwise enter its absolute path."))
         }
         if authMethod == .deviceKey {
             Section(String(localized: "This Phone's Key")) {

@@ -1,12 +1,12 @@
-.PHONY: gen build run test kit-test uiux-test ssh-test mobile-build clean release install
+.PHONY: gen build run test kit-test uiux-test ssh-test mobile-build mobile-test clean release install
 
 # HerdrMobile / HerdrSSH are arm64-only (libssh2 + OpenSSL xcframeworks).
 # Keep code signing on so Simulator Keychain (device SSH key) works; unsigned
 # builds log errSecMissingEntitlement (-34018) on every launch.
-MOBILE_BUILD = xcodebuild -project HerdrM.xcodeproj -scheme HerdrMobile \
+MOBILE_XCODEBUILD = xcodebuild -project HerdrM.xcodeproj -scheme HerdrMobile \
 	-configuration Debug \
 	-destination 'platform=iOS Simulator,name=iPhone 17,arch=arm64' \
-	-derivedDataPath build-ios build \
+	-derivedDataPath build-ios \
 	-skipPackagePluginValidation \
 	ARCHS=arm64 ONLY_ACTIVE_ARCH=YES EXCLUDED_ARCHS=x86_64
 
@@ -80,7 +80,11 @@ ssh-test:
 
 # Compile gate for HerdrMobile + HerdrSSH.
 mobile-build: gen
-	$(MOBILE_BUILD)
+	$(MOBILE_XCODEBUILD) build
+
+# Device-management behavior through the native app model and remote boundary.
+mobile-test: gen
+	$(MOBILE_XCODEBUILD) test -parallel-testing-enabled NO
 
 test: kit-test
 

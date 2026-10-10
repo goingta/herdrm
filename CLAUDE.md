@@ -41,6 +41,7 @@ make run
 make kit-test   # HerdrKit integration tests (need a running local herdr)
 HERDRM_E2E_SSH_TARGET=vincent@10.10.10.87 make kit-test   # + remote SSH E2E
 make mobile-build  # HerdrMobile + HerdrSSH compile (arm64 Simulator)
+make mobile-test   # HerdrMobile device management tests (arm64 Simulator)
 make ssh-test      # HerdrSSH Swift Testing on iOS Simulator
 ```
 
@@ -81,3 +82,17 @@ auto-bumped after each release.
 
 Reference repos: `~/Projects/herdr` (server source), `~/Projects/Heeler` (iOS client,
 same domain model), `~/Projects/waku` (sidebar design reference).
+
+## Agent skills
+
+### Issue tracker
+
+规格和任务发布到 goingta/herdrm 的 GitHub Issues。参见 docs/agents/issue-tracker.md。
+
+### Triage labels
+
+使用五个默认 triage 标签；可实施任务标记 ready-for-agent。参见 docs/agents/triage-labels.md。
+
+### Domain docs
+
+采用单上下文布局；术语与架构决定按需读取。参见 docs/agents/domain.md。
