@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MobileSettingsView: View {
+    var showsDoneButton = true
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
@@ -11,7 +12,9 @@ struct MobileSettingsView: View {
             .navigationTitle(AppLocalization.string("Settings"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLocalization.string("Done")) { dismiss() }
+                    if showsDoneButton {
+                        Button(AppLocalization.string("Done")) { dismiss() }
+                    }
                 }
             }
         }

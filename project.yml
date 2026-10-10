@@ -138,6 +138,10 @@ targets:
         NSLocalNetworkUsageDescription: >-
           herdrm connects to your development machines over SSH on your local network
           to reach the herdr sessions running on them.
+        # Development pages may use HTTP. This exception applies to WKWebView
+        # content only; HTTPS retains normal WebKit certificate verification.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.ios

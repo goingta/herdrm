@@ -328,15 +328,17 @@ final class MobileAttachSession: ObservableObject {
 struct MobileTerminalScreen: View {
     @StateObject private var session: MobileAttachSession
     @State private var composerText = ""
+    private let composerDraft: Binding<String>?
     @State private var keyboardShown = false
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil) {
         _session = StateObject(
             wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID)
         )
         self.title = title
+        self.composerDraft = composerDraft
     }
 
     var body: some View {
@@ -399,7 +401,7 @@ struct MobileTerminalScreen: View {
         HStack(spacing: 8) {
             TextField(
                 AppLocalization.string("Message the agent…"),
-                text: $composerText,
+                text: draft,
                 axis: .vertical
             )
             .lineLimit(1...4)
@@ -415,21 +417,23 @@ struct MobileTerminalScreen: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 28))
                     .foregroundStyle(
-                        composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             ? Theme.textGhost : Theme.accent
                     )
             }
-            .disabled(composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel(AppLocalization.string("Send Prompt"))
         }
     }
 
     private func sendPrompt() {
-        let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         session.prompt(text)
-        composerText = ""
+        draft.wrappedValue = ""
     }
+
+    private var draft: Binding<String> { composerDraft ?? $composerText }
 
     private func endedOverlay(_ reason: String) -> some View {
         VStack(spacing: 12) {

@@ -35,7 +35,8 @@ struct MobileRootView: View {
                     transport: transport,
                     target: .agent(paneID: agent.paneID),
                     paneID: agent.paneID,
-                    title: agent.title(tabLabel: model.tabLabel(for: agent))
+                    title: agent.title(tabLabel: model.tabLabel(for: agent)),
+                    composerDraft: composerDraft(paneID: agent.paneID)
                 )
                 .id(agent.paneID)
             } else if let pane = model.selectedTerminalPane,
@@ -68,6 +69,14 @@ struct MobileRootView: View {
         .task {
             if model.selectedDeviceID != nil { model.connectSelected() }
         }
+    }
+
+    private func composerDraft(paneID: String) -> Binding<String> {
+        guard let deviceID = model.selectedDeviceID else { return .constant("") }
+        return Binding(
+            get: { model.agentDraft(paneID: paneID, deviceID: deviceID) },
+            set: { model.setAgentDraft($0, paneID: paneID, deviceID: deviceID) }
+        )
     }
 }
 
