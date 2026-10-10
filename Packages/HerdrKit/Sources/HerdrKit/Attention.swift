@@ -25,7 +25,7 @@ public enum SpaceAttention: Equatable, Sendable {
 
 /// Keys a "finished while you weren't looking" flag. herdr has no viewed
 /// state; this lives entirely in the GUI.
-public struct AgentUnreadKey: Hashable, Sendable {
+public struct AgentUnreadKey: Hashable, Codable, Sendable {
     public let deviceID: UUID
     public let paneID: String
 
@@ -39,9 +39,8 @@ public enum AgentUnread: Sendable {
     /// Apply a live status transition. Initial snapshots pass an empty
     /// `previous` map and must not create unread flags.
     ///
-    /// Finishing while the pane is selected still counts as unread; the GUI
-    /// clears the flag when the user *leaves* that row, not when they happen
-    /// to be sitting on it as the turn ends.
+    /// Selection alone does not establish viewing. AgentReadState applies
+    /// foreground/current-terminal presentation evidence and persists the result.
     public static func applying(
         previous: [String: AgentStatus],
         agents: [AgentInfo],
@@ -53,8 +52,6 @@ public enum AgentUnread: Sendable {
         next = next.filter { key in
             key.deviceID != deviceID || liveIDs.contains(key.paneID)
         }
-
-        guard !previous.isEmpty else { return next }
 
         for agent in agents {
             let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)

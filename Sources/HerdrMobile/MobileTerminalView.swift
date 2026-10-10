@@ -87,6 +87,16 @@ final class MobileAttachSession: ObservableObject {
     /// Bytes before the bootstrap marker are shell rc chatter, not pane output.
     private var sawBootstrapMarker = false
     private var bootstrapBuffer = Data()
+    private var receivedCurrentOutput = false
+    private var generation: UUID?
+    private var contentVerified = false
+    private var verifying = false
+    private var presentationEpoch = 0
+    private var nextVerification = Date.distantPast
+    var readState: AgentReadState?
+    var unreadKey: AgentUnreadKey?
+    var onReadStateChanged: () -> Void = {}
+
     private var lightAdapter: LightTerminalANSIAdapter?
     private var lightColorsEnabled: Bool?
     private var appearanceGeneration = UUID()
@@ -123,6 +133,7 @@ final class MobileAttachSession: ObservableObject {
     }
 
     private func render(_ data: Data) {
+        if !data.isEmpty { receivedCurrentOutput = true }
         if var adapter = lightAdapter {
             let bytes = [UInt8](data)
             let transformed = adapter.transform(bytes[...])
@@ -136,7 +147,10 @@ final class MobileAttachSession: ObservableObject {
     /// The herdr pane behind this attach, for key/prompt RPCs.
     let paneID: String
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}) {
+        self.readState = readState
+        self.unreadKey = unreadKey
+        self.onReadStateChanged = onReadStateChanged
         self.transport = transport
         self.target = target
         self.paneID = paneID
@@ -165,6 +179,9 @@ final class MobileAttachSession: ObservableObject {
     func start() {
         guard channel == nil, openTask == nil else { return }
         status = .connecting
+        receivedCurrentOutput = false
+        contentVerified = false
+        if let unreadKey { generation = readState?.beginTerminal(unreadKey) }
         sawBootstrapMarker = false
         bootstrapBuffer.removeAll()
         if let lastGrid {
@@ -249,6 +266,45 @@ final class MobileAttachSession: ObservableObject {
         if !payload.isEmpty { render(Data(payload)) }
     }
 
+    func hidePresentedContent() {
+        presentationEpoch += 1
+        contentVerified = false
+        if let key = unreadKey, let generation { readState?.hideTerminal(key, generation: generation) }
+    }
+
+    func verifyPresentedContent(in view: UITerminalView, visible: Bool) {
+        guard visible, UIApplication.shared.applicationState == .active,
+              view.window != nil, case .running = status else { hidePresentedContent(); return }
+        guard !contentVerified, !verifying, Date() >= nextVerification, receivedCurrentOutput,
+              let key = unreadKey, let generation, let readState,
+              let text = terminal.readViewportText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let image = view.snapshotImage()?.cgImage,
+              TerminalFrameReadiness.containsRenderedContent(image) else { return }
+        verifying = true
+        nextVerification = Date().addingTimeInterval(1)
+        let epoch = presentationEpoch
+        Task { @MainActor [weak self, weak view] in
+            defer { self?.verifying = false }
+            guard let self else { return }
+            let result = try? await transport.request(method: "pane.read", params: .object([
+                "pane_id": .string(key.paneID), "source": .string("visible"), "format": .string("ansi")
+            ]))
+            guard self.generation == generation, self.presentationEpoch == epoch, view?.window != nil,
+                  UIApplication.shared.applicationState == .active, case .running = status,
+                  let paneText = result?["read"]?["text"]?.stringValue,
+                  AttachContentReadiness.matchesPane(visibleText: text, paneANSIText: paneText) else { return }
+            // Visibility may have changed while the RPC was in flight.
+            guard self.presentationVisible else { return }
+            contentVerified = true
+            readState.presented(key, generation: generation, foreground: true)
+            onReadStateChanged()
+        }
+    }
+
+    var presentationVisible = false {
+        didSet { if !presentationVisible { hidePresentedContent() } }
+    }
+
     /// Sends named keys through herdr's RPC — proper terminal encoding without
     /// this client knowing the pane's keyboard protocol state.
     func sendKeys(_ keys: [String]) {
@@ -278,6 +334,9 @@ final class MobileAttachSession: ObservableObject {
     }
 
     func stop() {
+        hidePresentedContent()
+        if let key = unreadKey, let generation { readState?.endTerminal(key, generation: generation) }
+        receivedCurrentOutput = false
         appearanceGeneration = UUID()
         appearanceRedrawTask?.cancel()
         appearanceRedrawTask = nil
@@ -332,10 +391,17 @@ struct MobileTerminalScreen: View {
     @State private var keyboardShown = false
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
+    @Environment(\.agentTabVisible) private var agentTabVisible
+    private let readState: AgentReadState?
+    private let unreadKey: AgentUnreadKey?
+    private let onReadStateChanged: () -> Void
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}) {
+        self.readState = readState
+        self.unreadKey = unreadKey
+        self.onReadStateChanged = onReadStateChanged
         _session = StateObject(
-            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID)
+            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged)
         )
         self.title = title
         self.composerDraft = composerDraft
@@ -345,7 +411,7 @@ struct MobileTerminalScreen: View {
         ZStack {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
-                MobileTerminalHost(session: session, keyboardShown: $keyboardShown)
+                MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
                 controls
             }
             if case .ended(let reason) = session.status {
@@ -356,7 +422,13 @@ struct MobileTerminalScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbarBackground(terminalBackground, for: .navigationBar)
-        .onDisappear { session.stop() }
+        .onAppear {
+            session.readState = readState
+            session.unreadKey = unreadKey
+            session.onReadStateChanged = onReadStateChanged
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
+        .onChange(of: agentTabVisible) { _, value in session.presentationVisible = value }
     }
 
     private var terminalBackground: SwiftUI.Color {
@@ -468,6 +540,7 @@ private final class MobileGhosttyTerminalView: UITerminalView {
 private struct MobileTerminalHost: UIViewRepresentable {
     let session: MobileAttachSession
     @Binding var keyboardShown: Bool
+    var presentationVisible: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     func makeUIView(context: Context) -> MobileGhosttyTerminalView {
@@ -478,19 +551,29 @@ private struct MobileTerminalHost: UIViewRepresentable {
         view.controller = MobileGhosttyRuntime.controller
         view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
         context.coordinator.observeKeyboard(for: view)
+        context.coordinator.session = session
+        session.presentationVisible = presentationVisible
+        context.coordinator.startPresentationChecks()
         session.start()
         return view
     }
 
-    func updateUIView(_ uiView: MobileGhosttyTerminalView, context _: Context) {
+    func updateUIView(_ uiView: MobileGhosttyTerminalView, context: Context) {
         uiView.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
         MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
         session.setLightColorsEnabled(colorScheme == .light)
-        if keyboardShown {
+        session.presentationVisible = presentationVisible
+        uiView.setSurfaceVisible(presentationVisible)
+        if keyboardShown && presentationVisible {
             uiView.acquireProgrammaticFocus()
         } else if uiView.isFirstResponder {
             uiView.resignFirstResponder()
         }
+    }
+
+    static func dismantleUIView(_ uiView: MobileGhosttyTerminalView, coordinator: Coordinator) {
+        coordinator.stopPresentationChecks()
+        coordinator.session?.stop()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(keyboardShown: $keyboardShown) }
@@ -500,6 +583,22 @@ private struct MobileTerminalHost: UIViewRepresentable {
     final class Coordinator: NSObject {
         var keyboardShown: Binding<Bool>
         weak var view: MobileGhosttyTerminalView?
+        weak var session: MobileAttachSession?
+        nonisolated(unsafe) private var presentationTimer: Timer?
+
+        func startPresentationChecks() {
+            let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let view = self.view, let session = self.session else { return }
+                    session.verifyPresentedContent(in: view, visible: session.presentationVisible)
+                }
+            }
+            presentationTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+
+        func stopPresentationChecks() { presentationTimer?.invalidate(); presentationTimer = nil }
+
 
         init(keyboardShown: Binding<Bool>) {
             self.keyboardShown = keyboardShown
@@ -518,6 +617,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
         }
 
         deinit {
+            presentationTimer?.invalidate()
             NotificationCenter.default.removeObserver(self)
         }
 
