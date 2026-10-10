@@ -130,4 +130,3 @@ enum BrandIconLoader {
         return nil
     }
 }
-
