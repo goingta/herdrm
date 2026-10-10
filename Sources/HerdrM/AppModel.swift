@@ -298,16 +298,6 @@ final class AppModel: ObservableObject {
 
     func publishReadState() { unreadAgents = agentReadState.unread }
 
-    func terminalPresentationChanged(_ ref: PaneRef, generation: UUID, presented: Bool) {
-        let key = AgentUnreadKey(deviceID: ref.deviceID, paneID: ref.paneID)
-        if presented {
-            agentReadState.presented(key, generation: generation, foreground: NSApp.isActive)
-        } else {
-            agentReadState.hideTerminal(key, generation: generation)
-        }
-        unreadAgents = agentReadState.unread
-    }
-
     // MARK: - Derived state
 
     func device(_ id: UUID) -> Device? {

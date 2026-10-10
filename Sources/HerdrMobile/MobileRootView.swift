@@ -249,7 +249,7 @@ private struct AgentRow: View {
         HStack(spacing: 10) {
             if unread && agent.status == .done {
                 Circle().fill(.blue).frame(width: 8, height: 8).frame(width: 20)
-                    .accessibilityLabel("Completed, unread")
+                    .accessibilityLabel(AppLocalization.string("Completed, unread"))
             } else {
                 StatusGlyph(status: agent.status)
             }

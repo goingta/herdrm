@@ -594,7 +594,6 @@ private struct MobileTerminalHost: UIViewRepresentable {
         }
 
         func stopPresentationChecks() { presentationTimer?.invalidate(); presentationTimer = nil }
-        deinit { presentationTimer?.invalidate() }
 
 
         init(keyboardShown: Binding<Bool>) {
@@ -614,6 +613,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
         }
 
         deinit {
+            presentationTimer?.invalidate()
             NotificationCenter.default.removeObserver(self)
         }
 
