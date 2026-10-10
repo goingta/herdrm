@@ -15,38 +15,12 @@ enum TerminalDefaults {
     /// has selectable weights — named families ship fixed faces and ignore this.
     static let defaultFontWeight: Double = 0
     static let defaultLineSpacing: Double = 1.0
-    static let darkBackgroundHex = "#101012"
-    static let darkForegroundHex = "#D6D6D6"
-    static let lightBackgroundHex = "#FFFFFF"
-    static let lightForegroundHex = "#3A3A3A"
-
-    /// The 16-color ANSI palette used by Apple's Terminal.app (formerly
-    /// `SwiftTerm.Color.terminalAppColors`, inlined with the renderer switch).
-    static let darkPalette: [(red: Int, green: Int, blue: Int)] = [
-        (0, 0, 0), (194, 54, 33), (37, 188, 36), (173, 173, 39),
-        (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205),
-        (129, 131, 131), (252, 57, 31), (49, 231, 34), (234, 236, 35),
-        (88, 51, 255), (249, 53, 248), (20, 240, 240), (233, 235, 235),
-    ]
-
-    /// Per entry, keep whichever of the original and luminance-flipped color reads
-    /// better on the light background: the flip rescues colors designed for dark
-    /// backgrounds (white, the bright variants), but ANSI red/blue/magenta/black
-    /// are already dark and would wash out to pastels.
-    static let lightPalette: [(red: Int, green: Int, blue: Int)] = darkPalette.map { color in
-        let flipped = LightTerminalANSIAdapter.lightRGB(
-            red: color.red,
-            green: color.green,
-            blue: color.blue
-        )
-        let originalContrast = LightTerminalANSIAdapter.contrastOnWhite(
-            red: color.red, green: color.green, blue: color.blue
-        )
-        let flippedContrast = LightTerminalANSIAdapter.contrastOnWhite(
-            red: flipped.red, green: flipped.green, blue: flipped.blue
-        )
-        return originalContrast >= flippedContrast ? color : flipped
-    }
+    static let darkBackgroundHex = TerminalPalette.darkBackgroundHex
+    static let darkForegroundHex = TerminalPalette.darkForegroundHex
+    static let lightBackgroundHex = TerminalPalette.lightBackgroundHex
+    static let lightForegroundHex = TerminalPalette.lightForegroundHex
+    static let darkPalette = TerminalPalette.darkPalette
+    static let lightPalette = TerminalPalette.lightPalette
 
     /// Bundled Nerd Font symbols (MIT, github.com/ryanoasis/nerd-fonts), used
     /// as a fallback for the icon glyphs agent TUIs draw.
@@ -201,27 +175,8 @@ enum GhosttyRuntime {
         }
     }
 
-    private static func makeTheme() -> TerminalTheme {
-        let dark = TerminalConfiguration { builder in
-            builder.withBackground(TerminalDefaults.darkBackgroundHex)
-            builder.withForeground(TerminalDefaults.darkForegroundHex)
-            for (index, color) in TerminalDefaults.darkPalette.enumerated() {
-                builder.withPalette(index, color: hex(color))
-            }
-        }
-        let light = TerminalConfiguration { builder in
-            builder.withBackground(TerminalDefaults.lightBackgroundHex)
-            builder.withForeground(TerminalDefaults.lightForegroundHex)
-            for (index, color) in TerminalDefaults.lightPalette.enumerated() {
-                builder.withPalette(index, color: hex(color))
-            }
-        }
-        return TerminalTheme(light: light, dark: dark)
-    }
+    private static func makeTheme() -> TerminalTheme { TerminalPalette.makeTheme() }
 
-    private static func hex(_ color: (red: Int, green: Int, blue: Int)) -> String {
-        String(format: "#%02X%02X%02X", color.red, color.green, color.blue)
-    }
 }
 
 /// The child's complete environment: TERM/COLORTERM/LANG plus the few user
@@ -304,6 +259,14 @@ final class TerminalProcessHost {
         adapterLock.lock()
         lightAdapter = enabled ? LightTerminalANSIAdapter() : nil
         adapterLock.unlock()
+        // Repaint explicitly colored TUI cells through the existing PTY.
+        // TIOCSWINSZ only emits SIGWINCH when the grid actually changes.
+        if let viewport {
+            process.resize(columns: viewport.columns, rows: viewport.rows > 1 ? viewport.rows - 1 : 1,
+                           widthPixels: viewport.widthPixels, heightPixels: viewport.heightPixels)
+            process.resize(columns: viewport.columns, rows: viewport.rows,
+                           widthPixels: viewport.widthPixels, heightPixels: viewport.heightPixels)
+        }
     }
 
     private func receiveOutput(_ data: Data) {

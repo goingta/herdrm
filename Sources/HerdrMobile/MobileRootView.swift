@@ -5,10 +5,19 @@ import SwiftUI
 /// sidebar mirrors the Mac app — Spaces, Agents, and a device switcher footer.
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
+    @State private var showSettings = false
 
     var body: some View {
         NavigationSplitView {
             SidebarListView(model: model)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .accessibilityLabel("Settings")
+                    }
+                }
         } detail: {
             if let device = model.selectedDevice, device.isTailcat,
                model.selectedAgentPaneID != nil {
@@ -49,6 +58,9 @@ struct MobileRootView: View {
         }
         .sheet(isPresented: $model.showAddDevice) {
             DeviceEditorSheet(model: model)
+        }
+        .sheet(isPresented: $showSettings) {
+            MobileSettingsView()
         }
         .sheet(item: $model.editingDevice) { device in
             DeviceEditorSheet(model: model, device: device)
