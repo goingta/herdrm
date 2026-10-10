@@ -197,8 +197,21 @@
         6,
         11,
         16,
-        17
+        17,
+        25
       ]
     }
+  },
+  "updatedAt": "2026-10-10",
+  "visualSupplement": {
+    "manifest": "../mac-iphone-visual-consistency-tickets/github-publication.json",
+    "issueNumbers": [
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ]
   }
 }

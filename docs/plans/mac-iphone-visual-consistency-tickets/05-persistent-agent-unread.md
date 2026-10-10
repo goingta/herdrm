@@ -1,6 +1,6 @@
 # V05 — 统一两端完成未读规则与本地保存
 
-状态：拆分草案，尚未发布到 GitHub。发布后使用 ready-for-agent，且必须核对阻塞项。
+状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[双端 UI] V05 — 统一两端完成未读规则与本地保存](https://github.com/goingta/herdrm/issues/24)。
 
 ## What to build
 
@@ -25,4 +25,6 @@ None — can start immediately. 现有两端已具备 Agent 状态和原生终�
 
 ## Spec coverage
 
-第一轮选择 5；第二轮选择 6、7；ADR 0001。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择已确认；本轮仅待确认任务颗粒度和依赖。
+第一轮选择 5；第二轮选择 6、7；ADR 0001。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择、任务颗粒度和依赖均已确认。
+
+<!-- herdrm-visual-v1-ticket:V05 -->

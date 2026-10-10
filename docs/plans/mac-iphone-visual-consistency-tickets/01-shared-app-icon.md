@@ -1,6 +1,6 @@
 # V01 — 统一两端 Logo 与正式应用名称
 
-状态：拆分草案，尚未发布到 GitHub。发布后使用 ready-for-agent，且必须核对阻塞项。
+状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[双端 UI] V01 — 统一两端 Logo 与正式应用名称](https://github.com/goingta/herdrm/issues/20)。
 
 ## What to build
 
@@ -22,4 +22,6 @@ None — can start immediately.
 
 ## Spec coverage
 
-统一 Logo 与正式应用名称；两端资源适配。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择已确认；本轮仅待确认任务颗粒度和依赖。
+统一 Logo 与正式应用名称；两端资源适配。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择、任务颗粒度和依赖均已确认。
+
+<!-- herdrm-visual-v1-ticket:V01 -->

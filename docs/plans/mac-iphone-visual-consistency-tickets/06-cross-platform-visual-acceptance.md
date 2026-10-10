@@ -1,6 +1,6 @@
 # V06 — 双端视觉、导航与可访问性验收
 
-状态：拆分草案，尚未发布到 GitHub。发布后使用 ready-for-agent，且必须核对阻塞项。
+状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[双端 UI] V06 — 双端视觉、导航与可访问性验收](https://github.com/goingta/herdrm/issues/25)。
 
 ## What to build
 
@@ -20,14 +20,16 @@
 
 ## Blocked by
 
-- 视觉任务 01 — 统一两端 Logo 与正式应用名称。
-- 视觉任务 03 — 统一中英文文案与语言设置。
-- 视觉任务 04 — 适配手机版开发机、工作区与 Agent 界面。
-- 视觉任务 05 — 统一两端完成未读规则与本地保存。
+- [#20 — [双端 UI] V01 — 统一两端 Logo 与正式应用名称](https://github.com/goingta/herdrm/issues/20)
+- [#22 — [双端 UI] V03 — 统一中英文文案与语言设置](https://github.com/goingta/herdrm/issues/22)
+- [#23 — [双端 UI] V04 — 适配手机版开发机、工作区与 Agent 界面](https://github.com/goingta/herdrm/issues/23)
+- [#24 — [双端 UI] V05 — 统一两端完成未读规则与本地保存](https://github.com/goingta/herdrm/issues/24)
 - [#12 — 完整 URL 的 App 内预览与导航](https://github.com/goingta/herdrm/issues/12)。
 
-视觉任务 02 与 #1 已经通过任务 04 构成传递依赖，不重复列出。
+#21 与 #1 已经通过 #23 构成传递依赖，不重复列出。
 
 ## Spec coverage
 
-统一视觉规格的验收条件；为 #18 提供视觉证据。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择已确认；本轮仅待确认任务颗粒度和依赖。
+统一视觉规格的验收条件；为 #18 提供视觉证据。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择、任务颗粒度和依赖均已确认。
+
+<!-- herdrm-visual-v1-ticket:V06 -->

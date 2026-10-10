@@ -1,0 +1,89 @@
+{
+  "repository": "goingta/herdrm",
+  "approvedAt": "2026-10-10",
+  "publishedAt": "2026-10-10",
+  "dependencyMode": "body-links",
+  "nativeDependencies": {
+    "status": "unavailable",
+    "reason": "The enabled GitHub connector does not expose issue blocked_by mutations; prior GitHub UI attempts also failed. Real blocker URLs are recorded in issue bodies; native blocking counters must not be used."
+  },
+  "tickets": {
+    "V01": {
+      "number": 20,
+      "url": "https://github.com/goingta/herdrm/issues/20",
+      "title": "[双端 UI] V01 — 统一两端 Logo 与正式应用名称",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "V02": {
+      "number": 21,
+      "url": "https://github.com/goingta/herdrm/issues/21",
+      "title": "[双端 UI] V02 — 统一 App 与终端主题及外观设置",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "V03": {
+      "number": 22,
+      "url": "https://github.com/goingta/herdrm/issues/22",
+      "title": "[双端 UI] V03 — 统一中英文文案与语言设置",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "V04": {
+      "number": 23,
+      "url": "https://github.com/goingta/herdrm/issues/23",
+      "title": "[双端 UI] V04 — 适配手机版开发机、工作区与 Agent 界面",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        21,
+        1
+      ]
+    },
+    "V05": {
+      "number": 24,
+      "url": "https://github.com/goingta/herdrm/issues/24",
+      "title": "[双端 UI] V05 — 统一两端完成未读规则与本地保存",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": []
+    },
+    "V06": {
+      "number": 25,
+      "url": "https://github.com/goingta/herdrm/issues/25",
+      "title": "[双端 UI] V06 — 双端视觉、导航与可访问性验收",
+      "labels": [
+        "ready-for-agent"
+      ],
+      "blockedBy": [
+        20,
+        22,
+        23,
+        24,
+        12
+      ]
+    }
+  },
+  "relatedIssueUpdates": [
+    {
+      "number": 1,
+      "change": "After real-device acceptance, prioritize #20, #21, #22 before #2"
+    },
+    {
+      "number": 12,
+      "change": "Use shared navigation, theme and language conventions"
+    },
+    {
+      "number": 18,
+      "change": "Reuse #25 evidence and add #25 blocker"
+    }
+  ]
+}

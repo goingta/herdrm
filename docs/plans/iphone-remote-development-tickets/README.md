@@ -6,9 +6,9 @@
 
 用户已确认[Mac 与 iPhone 的视觉一致性补充](../../specs/mac-iphone-visual-consistency.md)：先完成 #1 真机表单验收，再交付独立的 Logo、共享主题、语言/外观设置与基础组件工作，随后继续 #2 → #18。各页面在相应功能任务中接入统一视觉，完成未读行为单独衔接 #6 与 #8/#11，最终截图对比纳入 #18。
 
-新增工作尚未拆成 GitHub Issue，不为它预分配 Issue 编号，也未修改现有 GitHub 依赖关系。上述是实施优先级调整，原有功能之间的依赖继续适用。
+新增工作已批准并发布为 #20–#25，均标记 ready-for-agent。#1 的后续顺序、#12 的导航视觉约定及 #18 的视觉验收和 #25 阻塞项已同步到 GitHub；其他原有功能依赖继续适用。
 
-2026-10-10 书面规格复核通过，已形成[新增六项功能任务的拆分草案](../mac-iphone-visual-consistency-tickets/README.md)。草案列明独立交付、阻塞关系及与原有 #1–#18 的完整实施顺序，任务颗粒度待确认后发布。
+2026-10-10 用户已批准规格及六项独立任务拆分，参见[已发布视觉任务与完整实施顺序](../mac-iphone-visual-consistency-tickets/README.md)。正文、标签和相关任务更新均已回读核对。
 
 ## GitHub 任务与阻塞关系
 
@@ -31,13 +31,13 @@
 | 15 | [#15 — API、WebSocket 与同源 HMR 预览](https://github.com/goingta/herdrm/issues/15) | [#13](https://github.com/goingta/herdrm/issues/13) |
 | 16 | [#16 — 锁屏、断网与网页终止后的预览恢复](https://github.com/goingta/herdrm/issues/16) | [#14](https://github.com/goingta/herdrm/issues/14)、[#15](https://github.com/goingta/herdrm/issues/15) |
 | 17 | [#17 — 可复制的连接与恢复诊断](https://github.com/goingta/herdrm/issues/17) | [#5](https://github.com/goingta/herdrm/issues/5)、[#10](https://github.com/goingta/herdrm/issues/10)、[#13](https://github.com/goingta/herdrm/issues/13) |
-| 18 | [#18 — 完整开发流程与稳定性验收](https://github.com/goingta/herdrm/issues/18) | [#1](https://github.com/goingta/herdrm/issues/1)、[#6](https://github.com/goingta/herdrm/issues/6)、[#11](https://github.com/goingta/herdrm/issues/11)、[#16](https://github.com/goingta/herdrm/issues/16)、[#17](https://github.com/goingta/herdrm/issues/17) |
+| 18 | [#18 — 完整开发流程与稳定性验收](https://github.com/goingta/herdrm/issues/18) | [#1](https://github.com/goingta/herdrm/issues/1)、[#6](https://github.com/goingta/herdrm/issues/6)、[#11](https://github.com/goingta/herdrm/issues/11)、[#16](https://github.com/goingta/herdrm/issues/16)、[#17](https://github.com/goingta/herdrm/issues/17)、[#25](https://github.com/goingta/herdrm/issues/25) |
 
 GitHub 原生关系编辑器报 Cannot edit issues right now，重试后仍未保存关系。本轮使用每个 Issue 正文中的 Blocked by 真实链接表示依赖；不能依赖原生阻塞计数领取任务。ready-for-agent 表示规格完整，仍须核对正文中的阻塞项全部完成。
 
 ## 拆分原则
 
-- 共 18 项，每项包含用户行为、存储/传输/UI 所需改动与对应验证，可独立演示或验收。每项以一个新的工作上下文可完成为目标。
+- 原始功能拆分共 18 项，视觉补充另有 6 项；每项包含用户行为、存储/传输/UI 所需改动与对应验证，可独立演示或验收。每项以一个新的工作上下文可完成为目标。
 - 原生 HerdrMobile 已有设备模型、RPC 和终端接口，可作为共同基线；不把已经存在的能力再包装成所有任务的前置依赖。原型仅供行为参考，正式入口移除个人配置和原型耦合。
 - 每项先完成自身所需的小范围整理，再补功能；当前没有证据需要全局重构，不设所有任务都依赖的“基础层重构”票。SSH 转发的资源所有权整理归入端口预览，密钥错误语义整理归入配对。
 - 阻塞关系只表示缺少前置交付就不能完成本任务，不表示不能提前设计或阅读。共享界面或模型的编辑需要协调，但代码位置相同不自动构成阻塞。
@@ -126,7 +126,7 @@ GitHub 原生关系编辑器报 Cannot edit issues right now，重试后仍未�
 - 14 与 15 在 13 后分别完成目标管理和网页交互，可以并行；14 同时覆盖两种入口，12 已是传递依赖。
 - 16 需要目标身份、隔离存储及真实 WebSocket/HMR 行为，才能验证正确目标的恢复，不等待 Agent 终端恢复。
 - 17 汇总 05、10、13 的阶段及恢复结果；Agent 的提交状态或预览收藏不阻塞诊断交付。
-- 18 只列叶节点 01、06、11、16、17，其他任务通过传递依赖覆盖，不重复列出全部任务。
+- 18 原始功能依赖只列叶节点 01、06、11、16、17，其他功能通过传递依赖覆盖；视觉补充另加入 #25，复用双端视觉验收证据。
 
 ## 可立即开始的任务
 
@@ -134,7 +134,7 @@ GitHub 原生关系编辑器报 Cannot edit issues right now，重试后仍未�
 
 ## 发布结果
 
-18 项按依赖顺序创建，全部具有交付行为、验收条件、验证方法及真实阻塞链接；覆盖 44 条用户故事。未自动分配、关闭任务或开始编码，当前可领取前沿仍为 01、02、03、04、06、07、08、12。
+原始 18 项按依赖顺序创建，全部具有交付行为、验收条件、验证方法及真实阻塞链接，覆盖 44 条用户故事。初次发布时未自动分配、关闭任务或开始编码；随后 #1 代码与自动验证完成，真机验收仍待完成。当前实施优先级及新增 #20–#25 以本页顶部和视觉任务索引为准，逻辑无阻塞不代表已经安排实施。
 
 项目 skills 配置已应用到 CLAUDE.md 和 docs/agents；[配置确认记录](../iphone-agent-skills-setup.md)保存批准时的内容。未修改或关闭任何父 Issue；本次源规格是本地文档，没有既有父 Issue。发布编号映射保存于 github-publication.json。
 
