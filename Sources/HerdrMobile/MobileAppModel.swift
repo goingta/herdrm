@@ -447,7 +447,10 @@ final class MobileAppModel {
         username: String,
         authMethod: MobileDevice.AuthMethod,
         password: String,
-        socketPath: String? = nil
+        socketPath: String? = nil,
+        sshRoute: MobileDevice.SSHRoute = .direct,
+        gatewayHost: String = "",
+        gatewayPort: UInt16 = 8080
     ) throws {
         let device = try MobileDevice(
             name: name,
@@ -455,7 +458,10 @@ final class MobileAppModel {
             port: port,
             username: username,
             authMethod: authMethod,
-            socketPath: socketPath
+            socketPath: socketPath,
+            sshRoute: sshRoute,
+            gatewayHost: gatewayHost,
+            gatewayPort: gatewayPort
         ).validated()
         try savePassword(password, for: device)
         devices.append(device)

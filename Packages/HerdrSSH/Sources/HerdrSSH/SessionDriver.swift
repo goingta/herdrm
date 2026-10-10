@@ -90,7 +90,7 @@ actor SessionDriver {
     // for it are blocked on, which leaves them nothing to see on the socket.
     private let activity = SessionActivity()
 
-    func handshake(endpoint: SSHEndpoint, timeout: Duration) async throws -> SSHHostKey {
+    func handshake(endpoint: SSHEndpoint, httpConnectGateway: SSHEndpoint? = nil, timeout: Duration) async throws -> SSHHostKey {
         await acquireOperation()
         defer { releaseOperation() }
 
@@ -100,7 +100,22 @@ actor SessionDriver {
         let deadline = ContinuousClock.now.advanced(by: timeout)
 
         do {
-            descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
+            if httpConnectGateway != nil { try HTTPConnect.validateTarget(endpoint) }
+            do {
+                descriptor = try await SocketConnector.connect(to: httpConnectGateway ?? endpoint, until: deadline)
+                if httpConnectGateway != nil {
+                    try await HTTPConnect.negotiate(descriptor: descriptor, target: endpoint, until: deadline)
+                }
+            } catch let error as SSHError {
+                if httpConnectGateway != nil {
+                    switch error {
+                    case .timedOut: throw SSHError.httpConnectTimedOut
+                    case .connectionFailed: throw SSHError.httpConnectUnavailable
+                    default: break
+                    }
+                }
+                throw error
+            }
             return try await performHandshake(deadline: deadline)
         } catch {
             invalidateResources()
