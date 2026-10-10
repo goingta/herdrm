@@ -149,7 +149,8 @@ final class MobileAttachSession: ObservableObject {
     /// The herdr pane behind this attach, for key/prompt RPCs.
     let paneID: String
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true) {
+        self.transportReady = transportReady
         self.readState = readState
         self.unreadKey = unreadKey
         self.onReadStateChanged = onReadStateChanged
@@ -158,6 +159,7 @@ final class MobileAttachSession: ObservableObject {
         self.paneID = paneID
         let box = ChannelBox()
         channelBox = box
+        box.setInputEnabled(transportReady)
         terminal = InMemoryTerminalSession(
             write: { data in box.write(data) },
             resize: { viewport in
@@ -193,7 +195,7 @@ final class MobileAttachSession: ObservableObject {
 
     /// Attach at the actual viewport; reconnects reuse the last known grid.
     func start() {
-        guard channel == nil, openTask == nil else { return }
+        guard transportReady, channel == nil, openTask == nil else { return }
         status = .connecting
         receivedCurrentOutput = false
         contentVerified = false
@@ -213,7 +215,7 @@ final class MobileAttachSession: ObservableObject {
             Task { try? await channel.resize(columns: columns, rows: rows, timeout: .seconds(5)) }
             return
         }
-        guard openTask == nil, case .connecting = status else { return }
+        guard transportReady, openTask == nil, case .connecting = status else { return }
         open(columns: columns, rows: rows)
     }
 
@@ -442,7 +444,7 @@ struct MobileTerminalScreen: View {
         self.unreadKey = unreadKey
         self.onReadStateChanged = onReadStateChanged
         _session = StateObject(
-            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged)
+            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged, transportReady: transportReady)
         )
         self.title = title
         self.composerDraft = composerDraft
@@ -468,10 +470,15 @@ struct MobileTerminalScreen: View {
             session.unreadKey = unreadKey
             session.onReadStateChanged = onReadStateChanged
         }
-        .onChange(of: ObjectIdentifier(transport)) { _, _ in session.replaceTransport(transport) }
+        .onChange(of: ObjectIdentifier(transport)) { _, _ in
+            if transportReady { session.replaceTransport(transport) }
+        }
         .onChange(of: transportReady) { _, value in
             session.transportReady = value
-            if value, case .ended = session.status { session.stop(); session.start() }
+            guard value else { return }
+            session.replaceTransport(transport)
+            if case .ended = session.status { session.stop() }
+            session.start()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
         .onChange(of: agentTabVisible) { _, value in session.presentationVisible = value }

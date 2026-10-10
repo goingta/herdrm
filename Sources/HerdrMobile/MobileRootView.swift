@@ -6,6 +6,8 @@ import SwiftUI
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
     @State private var drawerShown = false
+    @State private var restorationHintVisible = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -16,7 +18,7 @@ struct MobileRootView: View {
                     if !model.workspaceTabs.isEmpty { tabStrip }
                     terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay(alignment: .top) {
-                            if model.hasCurrentSnapshot, !model.selectedTransportReady {
+                            if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
                                 restorationBanner
                             }
                         }
@@ -39,6 +41,15 @@ struct MobileRootView: View {
         .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
         .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
         .task { if model.selectedDeviceID != nil { model.connectSelected() } }
+        .task(id: [model.selectedTransportReady, scenePhase == .active]) {
+            restorationHintVisible = false
+            guard !model.selectedTransportReady, scenePhase == .active else { return }
+            // Input/read proof is gated immediately; quick healthy returns
+            // finish validation before a restoration hint needs to appear.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, !model.selectedTransportReady, scenePhase == .active else { return }
+            restorationHintVisible = true
+        }
     }
 
     // A native custom bar preserves a real 44pt button boundary even on
@@ -247,15 +258,20 @@ struct MobileRootView: View {
                 readState: model.agentReadState,
                 unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
                 onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady)
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(agent.paneID)")
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(agent.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
             MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady)
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)")
+                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if model.spaces.isEmpty {
             stateView("No Spaces", detail: AppLocalization.string("No existing workspace is available on this development machine."), symbol: "folder")
         } else {
             stateView("No Existing Terminal", detail: AppLocalization.string("This tab has no available Agent or terminal. Choose another existing tab or Space."), symbol: "terminal")
         }
+    }
+
+    private var shouldShowRestorationHint: Bool {
+        if case .failed = model.selectedConnectionState { return true }
+        return restorationHintVisible
     }
 
     private var restorationBanner: some View {

@@ -7,6 +7,36 @@ import HerdrSSH
 
 @MainActor
 final class AppearanceTests: XCTestCase {
+    func testConnectionDefiningEditCannotReusePreviousHostsRendererWithSameRemoteIDs() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let device = MobileDevice(name: "Daily", host: "prior.example", username: "alice")
+        store.save([device])
+        let model = MobileAppModel(store: store, connector: { _ in RecoveryTransport() })
+        let root = MobileWorkspaceView(model: model).environment(AppLanguagePreference.shared)
+            .environmentObject(AppAppearancePreference(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        let host = UIHostingController(rootView: root)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        try await settle()
+        let prior = try XCTUnwrap(findTerminal(in: host.view))
+        guard case .inMemory(let oldBackend) = prior.configuration.backend else { return XCTFail("Actual renderer expected") }
+        oldBackend.receive(Data("OLD_HOST_SENSITIVE_FRAME\r\n".utf8))
+        try await settle()
+        var edited = device
+        edited.host = "different.example"
+        try model.updateDevice(edited)
+        try await settle()
+        let current = try XCTUnwrap(findTerminal(in: host.view))
+        XCTAssertFalse(current === prior, "Connection-defining edit must construct a new renderer even when device/Space/Tab/pane IDs are reused")
+        guard case .inMemory(let currentBackend) = current.configuration.backend else { return XCTFail("Actual renderer expected") }
+        XCTAssertFalse(currentBackend.readViewportText()?.contains("OLD_HOST_SENSITIVE_FRAME") == true)
+        await model.selectedSession?.disconnect()
+    }
+
     func testObsoleteAttachFailureCannotReplaceNewTransportState() async throws {
         let first = DelayedAttachTransport()
         let replacement = RecoveryTransport()

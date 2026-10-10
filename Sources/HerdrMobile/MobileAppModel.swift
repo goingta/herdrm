@@ -116,6 +116,8 @@ final class MobileDeviceSession {
     var onAgents: (([AgentInfo], Bool) -> Void)?
     var onConnectionLost: (() -> Void)?
     private(set) var connectionID = UUID()
+    /// Stable across reconnects, replaced with the session on configuration edits.
+    let presentationID = UUID()
 
     init(device: MobileDevice, connector: @escaping MobileTransportConnector) {
         self.device = device
