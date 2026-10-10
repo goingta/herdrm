@@ -128,6 +128,36 @@ final class AttentionTests: XCTestCase {
         XCTAssertTrue(client.unread.contains(key))
     }
 
+    @MainActor
+    func testDisconnectDoesNotDeleteButAuthoritativeNewTaskOrDeletionDoes() throws {
+        let suite = "read-state-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let client = AgentReadState(defaults: defaults)
+        let first = UUID(), second = UUID()
+        let key = AgentUnreadKey(deviceID: first, paneID: "w1:p1")
+        let other = AgentUnreadKey(deviceID: second, paneID: key.paneID)
+        for device in [first, second] {
+            client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: device)
+            client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: device)
+        }
+        client.connectionLost(deviceID: first)
+        client.apply(agents: [], deviceID: first, authoritative: false)
+        XCTAssertEqual(client.unread, [key, other])
+        client.apply(agents: [try decodeDone(paneID: key.paneID)], deviceID: first)
+        XCTAssertEqual(client.unread, [key, other])
+        client.apply(agents: [try decodeAgent(paneID: key.paneID, status: "working")], deviceID: first)
+        XCTAssertEqual(client.unread, [other])
+        client.apply(agents: [], deviceID: second)
+        XCTAssertTrue(client.unread.isEmpty)
+    }
+
+    func testPresentedTextMustBelongToCorrespondingRemotePane() {
+        XCTAssertFalse(AttachContentReadiness.matchesPane(visibleText: "exec: herdr not found", paneANSIText: "Agent completed the task"))
+        XCTAssertFalse(AttachContentReadiness.matchesPane(visibleText: "", paneANSIText: "Agent completed the task"))
+        XCTAssertTrue(AttachContentReadiness.matchesPane(visibleText: "Agent completed the task\nstatus: done", paneANSIText: "\u{1b}[32mAgent completed the task\u{1b}[0m"))
+    }
+
     private func decodeDone(paneID: String) throws -> AgentInfo {
         try decodeAgent(paneID: paneID, status: "done")
     }

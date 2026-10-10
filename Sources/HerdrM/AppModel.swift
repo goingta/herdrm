@@ -169,11 +169,6 @@ final class AppModel: ObservableObject {
     @Published var selectedSpace: SpaceRef?
     @Published var selectedPane: PaneRef? {
         didSet {
-            // Leaving a finished agent marks it viewed. Staying on it while
-            // the turn ends must not swallow the unread flag.
-            if let old = oldValue, old != selectedPane {
-                unreadAgents.remove(AgentUnreadKey(deviceID: old.deviceID, paneID: old.paneID))
-            }
             noteSelectedAttachSession()
             if let pane = selectedPane, pane != oldValue {
                 snapPaneViewportToBottom(pane)
@@ -211,6 +206,7 @@ final class AppModel: ObservableObject {
         attachSessions.append(entry)
     }
     /// Finished agents the user has not opened since they flipped to `done`.
+    let agentReadState = AgentReadState()
     @Published private(set) var unreadAgents: Set<AgentUnreadKey> = []
 
     @Published var showAddDevice = false
@@ -288,6 +284,7 @@ final class AppModel: ObservableObject {
     private var previousStatuses: [UUID: [String: AgentStatus]] = [:]
 
     init() {
+        unreadAgents = agentReadState.unread
         let loaded = DeviceStore().load()
         devices = loaded
         // Restore the device filter only if that device still exists;
@@ -297,6 +294,18 @@ final class AppModel: ObservableObject {
            loaded.contains(where: { $0.id == id }) {
             deviceFilter = id
         }
+    }
+
+    func publishReadState() { unreadAgents = agentReadState.unread }
+
+    func terminalPresentationChanged(_ ref: PaneRef, generation: UUID, presented: Bool) {
+        let key = AgentUnreadKey(deviceID: ref.deviceID, paneID: ref.paneID)
+        if presented {
+            agentReadState.presented(key, generation: generation, foreground: NSApp.isActive)
+        } else {
+            agentReadState.hideTerminal(key, generation: generation)
+        }
+        unreadAgents = agentReadState.unread
     }
 
     // MARK: - Derived state
@@ -844,6 +853,7 @@ final class AppModel: ObservableObject {
                         throw HerdrError.connectionFailed("event stream ended")
                     }
                 } catch {
+                    self.agentReadState.connectionLost(deviceID: device.id)
                     self.sessions[device.id]?.connection = .failed(error.localizedDescription)
                     // The catalog's initial state is .loading; when connect()
                     // itself fails the load never runs, and without this the
@@ -1034,6 +1044,7 @@ final class AppModel: ObservableObject {
         refreshRequested.remove(id)
         statusGenerations[id] = nil
         previousStatuses[id] = nil
+        agentReadState.connectionLost(deviceID: id)
         let service = services[id]
         services[id] = nil
         sessions[id] = nil
@@ -1191,6 +1202,8 @@ final class AppModel: ObservableObject {
         if sshAuthenticationRequest?.deviceID == device.id { sshAuthenticationRequest = nil }
         stopSession(device.id)
         attachSessions.removeAll { $0.device.id == device.id }
+        agentReadState.removeDevice(device.id)
+        unreadAgents = agentReadState.unread
         devices.removeAll { $0.id == device.id }
         store.save(devices)
         if deviceFilter == device.id { deviceFilter = nil }
@@ -1243,12 +1256,8 @@ final class AppModel: ObservableObject {
                 refreshRequested.insert(deviceID)
                 return true
             }
-            unreadAgents = AgentUnread.applying(
-                previous: previousStatuses[deviceID] ?? [:],
-                agents: snapshot.agents,
-                unread: unreadAgents,
-                deviceID: device.id
-            )
+            agentReadState.apply(agents: snapshot.agents, deviceID: device.id, foreground: NSApp.isActive)
+            unreadAgents = agentReadState.unread
             notifyTransitions(
                 device: device,
                 from: previousStatuses[deviceID] ?? [:],
@@ -1353,12 +1362,8 @@ final class AppModel: ObservableObject {
         guard state.agents[index].status != status else { return true }
         let previous = previousStatuses[deviceID] ?? [:]
         state.agents[index] = state.agents[index].updatingStatus(status)
-        unreadAgents = AgentUnread.applying(
-            previous: previous,
-            agents: state.agents,
-            unread: unreadAgents,
-            deviceID: deviceID
-        )
+        agentReadState.apply(agents: [state.agents[index]], deviceID: deviceID, authoritative: false, foreground: NSApp.isActive)
+        unreadAgents = agentReadState.unread
         notifyTransitions(
             device: device,
             from: previous,

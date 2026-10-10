@@ -18,7 +18,13 @@ public final class AgentReadState {
             .flatMap { try? JSONDecoder().decode(Set<AgentUnreadKey>.self, from: $0) } ?? []
     }
 
-    public func apply(agents: [AgentInfo], deviceID: UUID, authoritative: Bool = true) {
+    public func apply(agents: [AgentInfo], deviceID: UUID, authoritative: Bool = true, foreground: Bool = true) {
+        if !foreground { visible.removeAll() }
+        if authoritative {
+            let live = Set(agents.map(\.paneID))
+            terminals = terminals.filter { $0.key.deviceID != deviceID || live.contains($0.key.paneID) }
+            visible = visible.filter { $0.deviceID != deviceID || live.contains($0.paneID) }
+        }
         let known = previous[deviceID] ?? [:]
         let retained = authoritative ? unread : unread.filter { key in
             key.deviceID != deviceID || !agents.contains { $0.paneID == key.paneID }

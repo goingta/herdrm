@@ -209,6 +209,10 @@ final class TerminalProcessHost {
     /// Guards `lightAdapter`: written on the main thread (theme switch), read on
     /// the process's IO queue.
     private let adapterLock = NSLock()
+    private var outputReceived = false
+    var hasReceivedOutput: Bool {
+        adapterLock.lock(); defer { adapterLock.unlock() }; return outputReceived
+    }
     private var lightAdapter: LightTerminalANSIAdapter?
     private let viewportBox = ViewportBox()
 
@@ -271,6 +275,7 @@ final class TerminalProcessHost {
 
     private func receiveOutput(_ data: Data) {
         adapterLock.lock()
+        if !data.isEmpty { outputReceived = true }
         var adapter = lightAdapter
         let bytes = [UInt8](data)
         let transformed = adapter?.transform(bytes[...])
@@ -1389,6 +1394,9 @@ struct AttachTerminalView: NSViewRepresentable {
     var onExit: ((Int32?) -> Void)? = nil
     /// Delivers the created view so a focus tracker can observe its window's
     /// first responder without retaining the terminal itself.
+    var readState: AgentReadState? = nil
+    var unreadKey: AgentUnreadKey? = nil
+    var onReadStateChanged: () -> Void = {}
     var onViewReady: ((LineBreakTerminalView) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -1401,6 +1409,13 @@ struct AttachTerminalView: NSViewRepresentable {
         context.coordinator.view = view
         context.coordinator.host = host
         context.coordinator.sessionID = sessionID
+        context.coordinator.readState = readState
+        context.coordinator.unreadKey = unreadKey
+        context.coordinator.onReadStateChanged = onReadStateChanged
+        context.coordinator.service = HerdrService(device: device)
+        if let unreadKey { context.coordinator.generation = readState?.beginTerminal(unreadKey) }
+        context.coordinator.setVisible(isVisible)
+        context.coordinator.startPresentationChecks()
         context.coordinator.onExit = onExit
         host.onExit = { [weak coordinator = context.coordinator] code in
             coordinator?.processDidExit(code)
@@ -1438,6 +1453,7 @@ struct AttachTerminalView: NSViewRepresentable {
         context.coordinator.onExit = onExit
         configureAppearance(nsView)
         nsView.setSurfaceVisible(isVisible)
+        context.coordinator.setVisible(isVisible)
     }
 
     /// Re-applied on update because capabilities can arrive after the terminal
@@ -1451,6 +1467,7 @@ struct AttachTerminalView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: LineBreakTerminalView, coordinator: Coordinator) {
         // A view being torn down must not report its own teardown as an exit.
+        coordinator.stopPresentationChecks()
         coordinator.onExit = nil
         if let sessionID = coordinator.sessionID {
             AttachViewRegistry.unregister(sessionID)
@@ -1489,7 +1506,78 @@ struct AttachTerminalView: NSViewRepresentable {
         weak var view: LineBreakTerminalView?
         var host: TerminalProcessHost?
 
+        var readState: AgentReadState?
+        var unreadKey: AgentUnreadKey?
+        var generation: UUID?
+        var onReadStateChanged: () -> Void = {}
+        var service: HerdrService?
+        private var visible = false
+        private var contentVerified = false
+        private var verifying = false
+        private var presentationEpoch = 0
+        private var nextVerification = Date.distantPast
+        nonisolated(unsafe) private var resignObserver: NSObjectProtocol?
+        private var ended = false
+        nonisolated(unsafe) private var presentationTimer: Timer?
+
+        func setVisible(_ value: Bool) {
+            visible = value
+            if !value { hideContent() }
+        }
+
+        func startPresentationChecks() {
+            resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.willResignActiveNotification,
+                object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hideContent() }
+            }
+            let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.checkPresentation() }
+            }
+            presentationTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+
+        private func hideContent() {
+            presentationEpoch += 1
+            contentVerified = false
+            if let key = unreadKey, let generation { readState?.hideTerminal(key, generation: generation) }
+        }
+
+        func stopPresentationChecks() {
+            presentationTimer?.invalidate()
+            presentationTimer = nil
+            ended = true
+            if let key = unreadKey, let generation { readState?.endTerminal(key, generation: generation) }
+        }
+
+        private func checkPresentation() {
+            guard visible, NSApp.isActive, !ended, let view, view.window?.isVisible == true else {
+                hideContent(); return
+            }
+            guard !contentVerified, !verifying, Date() >= nextVerification, let key = unreadKey, let generation,
+                  let readState, let service, host?.hasReceivedOutput == true,
+                  let text = host?.session.readViewportText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let image = view.snapshotImage(),
+                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  TerminalFrameReadiness.containsRenderedContent(cgImage) else { return }
+            verifying = true
+            nextVerification = Date().addingTimeInterval(1)
+            let epoch = presentationEpoch
+            Task { @MainActor [weak self] in
+                defer { self?.verifying = false }
+                guard let pane = try? await service.readPane(paneID: key.paneID), let self,
+                      self.visible, !self.ended, NSApp.isActive,
+                      self.generation == generation, self.presentationEpoch == epoch, self.view?.window?.isVisible == true,
+                      AttachContentReadiness.matchesPane(visibleText: text, paneANSIText: pane.text) else { return }
+                self.contentVerified = true
+                readState.presented(key, generation: generation, foreground: true)
+                self.onReadStateChanged()
+            }
+        }
+
         deinit {
+            presentationTimer?.invalidate()
+            if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
             if let authorizationID {
                 try? SSHCredentialStore.removeAuthorization(authorizationID)
             }
@@ -1516,6 +1604,7 @@ struct AttachTerminalView: NSViewRepresentable {
         }
 
         func processDidExit(_ code: Int32?) {
+            stopPresentationChecks()
             discardAuthorization()
             let callback = onExit
             onExit = nil  // report once
