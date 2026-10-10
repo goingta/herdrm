@@ -34,9 +34,9 @@ struct AppearancePickerSection: View {
     var body: some View {
         Section {
             Picker("Theme", selection: $appearance.mode) {
-                Text(String(localized: "theme.system", defaultValue: "System")).tag(AppearancePreference.system)
-                Text(String(localized: "theme.light", defaultValue: "Light")).tag(AppearancePreference.light)
-                Text(String(localized: "theme.dark", defaultValue: "Dark")).tag(AppearancePreference.dark)
+                Text(AppLocalization.string( "theme.system", defaultValue: "System")).tag(AppearancePreference.system)
+                Text(AppLocalization.string( "theme.light", defaultValue: "Light")).tag(AppearancePreference.light)
+                Text(AppLocalization.string( "theme.dark", defaultValue: "Dark")).tag(AppearancePreference.dark)
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("appearance.mode")

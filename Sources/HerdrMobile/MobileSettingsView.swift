@@ -6,11 +6,12 @@ struct MobileSettingsView: View {
         NavigationStack {
             Form {
                 AppearancePickerSection()
+                Section { LanguagePickerSection() }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(AppLocalization.string("Settings"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(AppLocalization.string("Done")) { dismiss() }
                 }
             }
         }

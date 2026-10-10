@@ -194,9 +194,9 @@ struct SidebarView: View {
 
     private var emptyAgentsHint: String {
         switch model.connection {
-        case .connecting: return String(localized: "Connecting…")
+        case .connecting: return AppLocalization.string("Connecting…")
         case .failed(let reason): return reason
-        default: return String(localized: "No agents")
+        default: return AppLocalization.string("No agents")
         }
     }
 
@@ -519,9 +519,9 @@ struct SidebarView: View {
     private func accessibilityLabel(unread: Bool) -> String {
         var parts = [entry.title]
         switch entry.agent.status {
-        case .working: parts.append(String(localized: "Working"))
-        case .blocked: parts.append(String(localized: "Needs input"))
-        case .done where unread: parts.append(String(localized: "Unread"))
+        case .working: parts.append(AppLocalization.string("Working"))
+        case .blocked: parts.append(AppLocalization.string("Needs input"))
+        case .done where unread: parts.append(AppLocalization.string("Unread"))
         case .done: break
         case .idle, .unknown: break
         }
@@ -680,7 +680,7 @@ struct DevicePopover: View {
                         Text("All Devices")
                             .font(.system(size: 13))
                             .foregroundStyle(Theme.text)
-                        Text(String(localized: "\(model.devices.count) devices · \(connectedCount) connected"))
+                        Text(AppLocalization.string("\(model.devices.count) devices · \(connectedCount) connected"))
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.textTertiary)
                     }
@@ -708,11 +708,11 @@ struct DevicePopover: View {
                 }
                 .contextMenu {
                     if !device.isLocal {
-                        Button(String(localized: "Edit \(device.name)…")) {
+                        Button(AppLocalization.string("Edit \(device.name)…")) {
                             isPresented = false
                             model.deviceToEdit = device
                         }
-                        Button(String(localized: "Remove \(device.name)"), role: .destructive) {
+                        Button(AppLocalization.string("Remove \(device.name)"), role: .destructive) {
                             isPresented = false
                             model.removeDevice(device)
                         }
@@ -949,9 +949,9 @@ private struct SpaceRowView: View {
     private var accessibilityLabel: String {
         var parts = [entry.workspace.label]
         switch model.attention(in: entry) {
-        case .blocked: parts.append(String(localized: "Needs input"))
-        case .unreadDone: parts.append(String(localized: "Unread"))
-        case .working: parts.append(String(localized: "Working"))
+        case .blocked: parts.append(AppLocalization.string("Needs input"))
+        case .unreadDone: parts.append(AppLocalization.string("Unread"))
+        case .working: parts.append(AppLocalization.string("Working"))
         case .none: break
         }
         return parts.joined(separator: ", ")

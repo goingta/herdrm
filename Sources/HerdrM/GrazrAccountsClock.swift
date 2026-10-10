@@ -165,11 +165,11 @@ struct GrazrAccountsClock: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(color(account))
                     Text(first.to >= end
-                         ? String(localized: "runs past the end of the clock")
-                         : String(localized: "runs until ~\(GrazrStyle.time(first.to, now: now))"))
+                         ? AppLocalization.string("runs past the end of the clock")
+                         : AppLocalization.string("runs until ~\(GrazrStyle.time(first.to, now: now))"))
                         .foregroundStyle(Theme.textSecondary)
                     if let following {
-                        Text(following.account.map { String(localized: "then \($0.name)") } ?? String(localized: "then nothing to swap to"))
+                        Text(following.account.map { AppLocalization.string("then \($0.name)") } ?? AppLocalization.string("then nothing to swap to"))
                             .foregroundStyle(following.account == nil ? Theme.danger : Theme.textSecondary)
                     }
                 } else if let first {
@@ -190,8 +190,8 @@ struct GrazrAccountsClock: View {
     private func summary(_ timeline: GrazrTimeline) -> String {
         timeline.stretches.prefix(4).map { stretch in
             let until = GrazrStyle.time(stretch.to, now: now)
-            return stretch.account.map { String(localized: "\($0.name) until \(until)") }
-                ?? String(localized: "nothing to run until \(until)")
+            return stretch.account.map { AppLocalization.string("\($0.name) until \(until)") }
+                ?? AppLocalization.string("nothing to run until \(until)")
         }
         .joined(separator: ", ")
     }
@@ -249,7 +249,7 @@ struct GrazrAccountsClock: View {
             Text(GrazrStyle.time(at, now: now)).foregroundStyle(Theme.textSecondary)
         case .refill(let at, let account, let group):
             Text(account.name).fontWeight(.semibold).foregroundStyle(color(account))
-            Text(group == "session" ? String(localized: "5-hour window refills") : String(localized: "week resets"))
+            Text(group == "session" ? AppLocalization.string("5-hour window refills") : AppLocalization.string("week resets"))
                 .foregroundStyle(Theme.text)
             Text(GrazrStyle.time(at, now: now)).foregroundStyle(Theme.textSecondary)
         }

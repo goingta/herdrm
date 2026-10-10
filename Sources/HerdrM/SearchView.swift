@@ -211,7 +211,7 @@ struct SearchSheet: View {
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 trailing(
-                    String(localized: "Terminal · \(model.spaceName(deviceID: entry.device.id, workspaceID: entry.pane.workspaceID))"),
+                    AppLocalization.string("Terminal · \(model.spaceName(deviceID: entry.device.id, workspaceID: entry.pane.workspaceID))"),
                     device: entry.device
                 )
             case .space(let entry):
@@ -224,7 +224,7 @@ struct SearchSheet: View {
                     .foregroundStyle(Theme.text)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                trailing(String(localized: "Space · \(model.agentCount(in: entry)) agents"), device: entry.device)
+                trailing(AppLocalization.string("Space · \(model.agentCount(in: entry)) agents"), device: entry.device)
             }
         }
         .padding(.horizontal, 10)

@@ -323,9 +323,9 @@ private enum ClipboardFileError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedItem: return String(localized: "Remote paste supports files and folders, not special files.")
-        case .imageEncodingFailed: return String(localized: "The clipboard image could not be encoded as PNG.")
-        case .transferUnavailable: return String(localized: "The remote file transfer service is unavailable.")
+        case .unsupportedItem: return AppLocalization.string("Remote paste supports files and folders, not special files.")
+        case .imageEncodingFailed: return AppLocalization.string("The clipboard image could not be encoded as PNG.")
+        case .transferUnavailable: return AppLocalization.string("The remote file transfer service is unavailable.")
         }
     }
 }
@@ -731,7 +731,7 @@ final class LineBreakTerminalView: AppTerminalView {
 
     override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
 
-    override func accessibilityHelp() -> String? { String(localized: "Terminal content area") }
+    override func accessibilityHelp() -> String? { AppLocalization.string("Terminal content area") }
 
     override func accessibilityValue() -> Any? { accessibilityText }
 
@@ -854,20 +854,20 @@ final class LineBreakTerminalView: AppTerminalView {
         if attachedSurface?.hasSelection() == true,
            let selection = attachedSurface?.readSelection(),
            !selection.isEmpty {
-            menu.addItem(makeItem(String(localized: "Copy"), #selector(copySelectionFromMenu(_:))))
+            menu.addItem(makeItem(AppLocalization.string("Copy"), #selector(copySelectionFromMenu(_:))))
             if let url = Self.firstURL(in: selection) {
                 menu.addItem(.separator())
-                let open = makeItem(String(localized: "Open Link"), #selector(openLinkFromMenu(_:)))
+                let open = makeItem(AppLocalization.string("Open Link"), #selector(openLinkFromMenu(_:)))
                 open.representedObject = url
                 menu.addItem(open)
-                let copyLink = makeItem(String(localized: "Copy Link Address"), #selector(copyLinkFromMenu(_:)))
+                let copyLink = makeItem(AppLocalization.string("Copy Link Address"), #selector(copyLinkFromMenu(_:)))
                 copyLink.representedObject = url
                 menu.addItem(copyLink)
             }
             menu.addItem(.separator())
         }
-        menu.addItem(makeItem(String(localized: "Paste"), #selector(performPaste(_:))))
-        menu.addItem(makeItem(String(localized: "Select All"), #selector(selectAll(_:))))
+        menu.addItem(makeItem(AppLocalization.string("Paste"), #selector(performPaste(_:))))
+        menu.addItem(makeItem(AppLocalization.string("Select All"), #selector(selectAll(_:))))
         return menu
     }
 
@@ -1879,7 +1879,7 @@ final class LinkCopyPopup: NSVisualEffectView {
     init(link: TerminalLink, onCopy: @escaping (TerminalLink) -> Void) {
         self.link = link
         self.onCopy = onCopy
-        button = NSButton(title: String(localized: "Copy"), target: nil, action: nil)
+        button = NSButton(title: AppLocalization.string("Copy"), target: nil, action: nil)
         super.init(frame: .zero)
         material = .popover
         blendingMode = .withinWindow
@@ -1906,7 +1906,7 @@ final class LinkCopyPopup: NSVisualEffectView {
             button.topAnchor.constraint(equalTo: topAnchor, constant: 3),
             button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
         ])
-        setAccessibilityLabel(String(localized: "Copy"))
+        setAccessibilityLabel(AppLocalization.string("Copy"))
     }
 
     @available(*, unavailable)
@@ -1926,7 +1926,7 @@ final class LinkCopyPopup: NSVisualEffectView {
 
     /// Confirms the copy in place, then lets the owner close the popup.
     func showCopied(then done: @escaping () -> Void) {
-        button.title = String(localized: "Copied")
+        button.title = AppLocalization.string("Copied")
         button.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
         button.isEnabled = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: done)

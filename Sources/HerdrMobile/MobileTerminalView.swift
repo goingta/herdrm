@@ -239,7 +239,7 @@ final class MobileAttachSession: ObservableObject {
             } catch {}
             guard let self, !Task.isCancelled else { return }
             if case .running = self.status {
-                self.status = .ended(String(localized: "Session ended"))
+                self.status = .ended(AppLocalization.string("Session ended"))
             }
         }
     }
@@ -448,12 +448,12 @@ struct MobileTerminalScreen: View {
 
     private var keyBar: some View {
         HStack(spacing: 8) {
-            KeyChip("esc") { session.sendKeys(["esc"]) }
-            KeyChip("tab") { session.sendKeys(["tab"]) }
-            KeyChip("↑") { session.sendKeys(["up"]) }
-            KeyChip("↓") { session.sendKeys(["down"]) }
-            KeyChip("⏎") { session.sendKeys(["enter"]) }
-            KeyChip("^C") { session.sendKeys(["ctrl+c"]) }
+            KeyChip("esc", accessibilityLabel: AppLocalization.string("Escape")) { session.sendKeys(["esc"]) }
+            KeyChip("tab", accessibilityLabel: AppLocalization.string("Tab")) { session.sendKeys(["tab"]) }
+            KeyChip("↑", accessibilityLabel: AppLocalization.string("Move Up")) { session.sendKeys(["up"]) }
+            KeyChip("↓", accessibilityLabel: AppLocalization.string("Move Down")) { session.sendKeys(["down"]) }
+            KeyChip("⏎", accessibilityLabel: AppLocalization.string("Enter")) { session.sendKeys(["enter"]) }
+            KeyChip("^C", accessibilityLabel: AppLocalization.string("Interrupt (Control-C)")) { session.sendKeys(["ctrl+c"]) }
             Spacer()
             Button {
                 keyboardShown.toggle()
@@ -463,13 +463,14 @@ struct MobileTerminalScreen: View {
                     .frame(width: 34, height: 30)
                     .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
             }
+            .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
         }
     }
 
     private var composer: some View {
         HStack(spacing: 8) {
             TextField(
-                String(localized: "Message the agent…"),
+                AppLocalization.string("Message the agent…"),
                 text: $composerText,
                 axis: .vertical
             )
@@ -491,6 +492,7 @@ struct MobileTerminalScreen: View {
                     )
             }
             .disabled(composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityLabel(AppLocalization.string("Send Prompt"))
         }
     }
 
@@ -506,7 +508,7 @@ struct MobileTerminalScreen: View {
             Text(reason)
                 .font(.callout)
                 .foregroundStyle(Theme.textSecondary)
-            Button(String(localized: "Reconnect")) {
+            Button(AppLocalization.string("Reconnect")) {
                 session.stop()
                 session.start()
             }
@@ -629,10 +631,12 @@ private struct MobileTerminalHost: UIViewRepresentable {
 
 private struct KeyChip: View {
     let label: String
+    let accessibilityLabel: String
     let action: () -> Void
 
-    init(_ label: String, action: @escaping () -> Void) {
+    init(_ label: String, accessibilityLabel: String, action: @escaping () -> Void) {
         self.label = label
+        self.accessibilityLabel = accessibilityLabel
         self.action = action
     }
 
@@ -646,5 +650,6 @@ private struct KeyChip: View {
                 .padding(.horizontal, 4)
                 .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
         }
+        .accessibilityLabel(accessibilityLabel)
     }
 }

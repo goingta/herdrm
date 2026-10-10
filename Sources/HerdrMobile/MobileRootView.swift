@@ -25,9 +25,9 @@ struct MobileRootView: View {
                 // PTY channel — so there is no terminal byte stream to attach
                 // to on iOS. Prompting stays available from the agent's row.
                 ContentUnavailableView(
-                    String(localized: "No Terminal over Tailcat"),
+                    AppLocalization.string("No Terminal over Tailcat"),
                     systemImage: "terminal",
-                    description: Text(String(localized: "This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."))
+                    description: Text(AppLocalization.string("This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."))
                 )
             } else if let agent = model.selectedAgent,
                let transport = model.selectedSession?.transport {
@@ -53,9 +53,9 @@ struct MobileRootView: View {
                 .id("\(model.selectedDeviceID?.uuidString ?? "")-\(pane.paneID)-\(model.selectedSession?.connectionID.uuidString ?? "")")
             } else {
                 ContentUnavailableView(
-                    String(localized: "No Agent Selected"),
+                    AppLocalization.string("No Agent Selected"),
                     systemImage: "terminal",
-                    description: Text(String(localized: "Pick an agent to attach to its terminal."))
+                    description: Text(AppLocalization.string("Pick an agent to attach to its terminal."))
                 )
             }
         }
@@ -81,11 +81,11 @@ private struct SidebarListView: View {
         List(selection: $model.selectedAgentPaneID) {
             if model.devices.isEmpty {
                 ContentUnavailableView {
-                    Label(String(localized: "No Devices"), systemImage: "desktopcomputer")
+                    Label(AppLocalization.string("No Devices"), systemImage: "desktopcomputer")
                 } description: {
-                    Text(String(localized: "Add a Mac running herdr to get started."))
+                    Text(AppLocalization.string("Add a development machine running herdr to get started."))
                 } actions: {
-                    Button(String(localized: "Add Device")) { model.showAddDevice = true }
+                    Button(AppLocalization.string("Add Device")) { model.showAddDevice = true }
                         .buttonStyle(.borderedProminent)
                 }
                 .listRowSeparator(.hidden)
@@ -122,7 +122,7 @@ private struct SidebarListView: View {
             case .idle, .connecting:
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text(String(localized: "Connecting…"))
+                    Text(AppLocalization.string("Connecting…"))
                         .foregroundStyle(.secondary)
                 }
                 .listRowSeparator(.hidden)
@@ -131,7 +131,7 @@ private struct SidebarListView: View {
                     Text(reason)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Reconnect")) { model.connectSelected() }
+                    Button(AppLocalization.string("Reconnect")) { model.connectSelected() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -143,12 +143,12 @@ private struct SidebarListView: View {
     }
 
     private var spacesSection: some View {
-        Section(String(localized: "Spaces")) {
+        Section(AppLocalization.string("Spaces")) {
             Button {
                 model.selectedSpaceID = nil
             } label: {
                 SpaceRow(
-                    label: String(localized: "All Spaces"),
+                    label: AppLocalization.string("All Spaces"),
                     systemImage: "square.grid.2x2",
                     count: model.spaces.count,
                     selected: model.selectedSpaceID == nil
@@ -174,7 +174,7 @@ private struct SidebarListView: View {
     @ViewBuilder
     private var terminalsSection: some View {
         if !model.terminalPanes.isEmpty {
-            Section(String(localized: "Terminals")) {
+            Section(AppLocalization.string("Terminals")) {
                 ForEach(model.terminalPanes) { pane in
                     NavigationLink(value: pane.paneID) {
                         HStack(spacing: 10) {
@@ -196,9 +196,9 @@ private struct SidebarListView: View {
     }
 
     private var agentsSection: some View {
-        Section(String(localized: "Agents")) {
+        Section(AppLocalization.string("Agents")) {
             if model.agents.isEmpty {
-                Text(String(localized: "No agents"))
+                Text(AppLocalization.string("No agents"))
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
@@ -267,7 +267,7 @@ private struct AgentRow: View {
             }
             Spacer()
             if agent.status == .blocked {
-                Text(String(localized: "needs input"))
+                Text(AppLocalization.string("needs input"))
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -322,10 +322,10 @@ private struct DeviceSwitcherMenu: View {
                     }
                 }
                 Divider()
-                Button(String(localized: "Add Device…")) { model.showAddDevice = true }
+                Button(AppLocalization.string("Add Device…")) { model.showAddDevice = true }
                 if let selected = model.selectedDevice {
-                    Button(String(localized: "Edit Device…")) { model.editingDevice = selected }
-                    Button(String(localized: "Remove \(selected.name)"), role: .destructive) {
+                    Button(AppLocalization.string("Edit Device…")) { model.editingDevice = selected }
+                    Button(AppLocalization.string("Remove \(selected.name)"), role: .destructive) {
                         confirmRemove = true
                     }
                 }
@@ -340,18 +340,18 @@ private struct DeviceSwitcherMenu: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .confirmationDialog(String(localized: "Remove this device?"), isPresented: $confirmRemove, titleVisibility: .visible) {
-                Button(String(localized: "Remove Device"), role: .destructive) {
+            .confirmationDialog(AppLocalization.string("Remove this device?"), isPresented: $confirmRemove, titleVisibility: .visible) {
+                Button(AppLocalization.string("Remove Device"), role: .destructive) {
                     do { try model.removeDevice(device) }
                     catch { removalError = error.localizedDescription }
                 }
             } message: {
-                Text(String(localized: "This removes its local configuration and credentials. The phone's shared SSH key is kept. To revoke remote access, remove this phone's public key from the server's authorized_keys separately."))
+                Text(AppLocalization.string("This removes its local configuration and credentials. The phone's shared SSH key is kept. To revoke remote access, remove this phone's public key from the server's authorized_keys separately."))
             }
-            .alert(String(localized: "Could Not Remove Device"), isPresented: Binding(
+            .alert(AppLocalization.string("Could Not Remove Device"), isPresented: Binding(
                 get: { removalError != nil }, set: { if !$0 { removalError = nil } }
             )) {
-                Button(String(localized: "OK"), role: .cancel) { removalError = nil }
+                Button(AppLocalization.string("OK"), role: .cancel) { removalError = nil }
             } message: { Text(removalError ?? "") }
         }
     }
@@ -438,35 +438,35 @@ struct DeviceEditorSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(String(localized: "Connection"), selection: $kind) {
-                        Text(String(localized: "SSH")).tag(MobileDevice.Kind.ssh)
-                        Text(String(localized: "Tailcat")).tag(MobileDevice.Kind.tailcat)
+                    Picker(AppLocalization.string("Connection"), selection: $kind) {
+                        Text(AppLocalization.string("SSH")).tag(MobileDevice.Kind.ssh)
+                        Text(AppLocalization.string("Tailcat")).tag(MobileDevice.Kind.tailcat)
                     }
                     .disabled(device != nil)
                 }
 
-                Section(String(localized: "Device")) {
-                    TextField(String(localized: "Name (optional)"), text: $name)
+                Section(AppLocalization.string("Device")) {
+                    TextField(AppLocalization.string("Name (optional)"), text: $name)
                     if kind == .ssh {
-                        TextField(String(localized: "Host or IP"), text: $host)
+                        TextField(AppLocalization.string("Host or IP"), text: $host)
                             .textContentType(.URL)
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
-                        TextField(String(localized: "Port"), text: $port)
+                        TextField(AppLocalization.string("Port"), text: $port)
                             .keyboardType(.numberPad)
                     }
                 }
 
                 if kind == .tailcat, device == nil {
                     Section {
-                        SecureField(String(localized: "Token"), text: $tailcatToken)
+                        SecureField(AppLocalization.string("Token"), text: $tailcatToken)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     } header: {
-                        Text(String(localized: "Tailcat Token"))
+                        Text(AppLocalization.string("Tailcat Token"))
                     } footer: {
-                        Text(String(localized: "From the host: herdr plugin action invoke herdr.tailcat.token — the token is stored in this device's Keychain, and the tunnel needs no SSH."))
+                        Text(AppLocalization.string("From the host: herdr plugin action invoke herdr.tailcat.token — the token is stored in this device's Keychain, and the tunnel needs no SSH."))
                     }
                     tailcatClientKeySection
                 } else if kind == .ssh {
@@ -476,14 +476,14 @@ struct DeviceEditorSheet: View {
                     Section { Text(validationError).foregroundStyle(.red).font(.footnote) }
                 }
             }
-            .navigationTitle(device == nil ? String(localized: "Add Device") : String(localized: "Edit Device"))
+            .navigationTitle(device == nil ? AppLocalization.string("Add Device") : AppLocalization.string("Edit Device"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "Cancel")) { dismiss() }
+                    Button(AppLocalization.string("Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(device == nil ? String(localized: "Add") : String(localized: "Save")) {
+                    Button(device == nil ? AppLocalization.string("Add") : AppLocalization.string("Save")) {
                         do {
                             if var edited = device {
                                 edited.name = name
@@ -516,10 +516,10 @@ struct DeviceEditorSheet: View {
                     .disabled(!canAdd)
                 }
             }
-            .alert(String(localized: "Could Not Save Device"), isPresented: Binding(
+            .alert(AppLocalization.string("Could Not Save Device"), isPresented: Binding(
                 get: { saveError != nil }, set: { if !$0 { saveError = nil } }
             )) {
-                Button(String(localized: "OK"), role: .cancel) { saveError = nil }
+                Button(AppLocalization.string("OK"), role: .cancel) { saveError = nil }
             } message: { Text(saveError ?? "") }
         }
     }
@@ -533,8 +533,8 @@ struct DeviceEditorSheet: View {
                     .lineLimit(3)
                     .textSelection(.enabled)
                 Button(copiedClientKey
-                    ? String(localized: "Copied")
-                    : String(localized: "Copy Client Key")
+                    ? AppLocalization.string("Copied")
+                    : AppLocalization.string("Copy Client Key")
                 ) {
                     UIPasteboard.general.string = publicKey
                     copiedClientKey = true
@@ -545,78 +545,78 @@ struct DeviceEditorSheet: View {
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
-            Button(String(localized: "Regenerate Key"), role: .destructive) {
+            Button(AppLocalization.string("Regenerate Key"), role: .destructive) {
                 confirmRegenerateClientKey = true
             }
             .confirmationDialog(
-                String(localized: "Regenerate the client key?"),
+                AppLocalization.string("Regenerate the client key?"),
                 isPresented: $confirmRegenerateClientKey,
                 titleVisibility: .visible
             ) {
-                Button(String(localized: "Regenerate Key"), role: .destructive) {
+                Button(AppLocalization.string("Regenerate Key"), role: .destructive) {
                     model.regenerateTailcatClientKey()
                     copiedClientKey = false
                 }
             } message: {
-                Text(String(localized: "Every host's allow.list must be updated with the new key, and all tailcat devices will reconnect."))
+                Text(AppLocalization.string("Every host's allow.list must be updated with the new key, and all tailcat devices will reconnect."))
             }
         } header: {
-            Text(String(localized: "Client Key"))
+            Text(AppLocalization.string("Client Key"))
         } footer: {
-            Text(String(localized: "If the host uses an allow list, add this key to allow.list in the folder from herdr plugin config-dir herdr.tailcat (one key per line), then run: herdr plugin action invoke herdr.tailcat.restart. All tailcat devices on this phone share this key."))
+            Text(AppLocalization.string("If the host uses an allow list, add this key to allow.list in the folder from herdr plugin config-dir herdr.tailcat (one key per line), then run: herdr plugin action invoke herdr.tailcat.restart. All tailcat devices on this phone share this key."))
         }
         .onAppear { model.loadTailcatClientPublicKey() }
     }
 
     @ViewBuilder
     private var sshSections: some View {
-        Section(String(localized: "SSH Login")) {
-            TextField(String(localized: "Username"), text: $username)
+        Section(AppLocalization.string("SSH Login")) {
+            TextField(AppLocalization.string("Username"), text: $username)
                 .textContentType(.username)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-            Picker(String(localized: "Authentication"), selection: $authMethod) {
-                Text(String(localized: "Device Key")).tag(MobileDevice.AuthMethod.deviceKey)
-                Text(String(localized: "Password")).tag(MobileDevice.AuthMethod.password)
+            Picker(AppLocalization.string("Authentication"), selection: $authMethod) {
+                Text(AppLocalization.string("Device Key")).tag(MobileDevice.AuthMethod.deviceKey)
+                Text(AppLocalization.string("Password")).tag(MobileDevice.AuthMethod.password)
             }
             if authMethod == .password {
-                SecureField(String(localized: "Password"), text: $password)
+                SecureField(AppLocalization.string("Password"), text: $password)
                     .textContentType(.password)
                 if device?.authMethod == .password {
-                    Text(String(localized: "Leave blank to keep the saved password."))
+                    Text(AppLocalization.string("Leave blank to keep the saved password."))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }
         Section {
-            TextField(String(localized: "Socket path (optional)"), text: $socketPath)
+            TextField(AppLocalization.string("Socket path (optional)"), text: $socketPath)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
         } header: {
-            Text(String(localized: "Herdr Socket"))
+            Text(AppLocalization.string("Herdr Socket"))
         } footer: {
-            Text(String(localized: "Leave blank for the remote user's default socket. Otherwise enter its absolute path."))
+            Text(AppLocalization.string("Leave blank for the remote user's default socket. Otherwise enter its absolute path."))
         }
         if authMethod == .deviceKey {
-            Section(String(localized: "This Phone's Key")) {
+            Section(AppLocalization.string("This Phone's Key")) {
                 Text(model.deviceKeyAuthorizedLine)
                     .font(.system(size: 11, design: .monospaced))
                     .lineLimit(3)
                     .textSelection(.enabled)
                 Button(copiedKey
-                    ? String(localized: "Copied")
-                    : String(localized: "Copy authorized_keys Line")
+                    ? AppLocalization.string("Copied")
+                    : AppLocalization.string("Copy authorized_keys Line")
                 ) {
                     UIPasteboard.general.string = model.deviceKeyAuthorizedLine
                     copiedKey = true
                 }
-                Text(String(localized: "On the Mac, run: echo '<key>' >> ~/.ssh/authorized_keys — or paste the line into herdrm's upcoming pairing screen."))
+                Text(AppLocalization.string("On the development machine, append this public key to ~/.ssh/authorized_keys."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         } else {
             Section {
-                Text(String(localized: "The password is stored in this device's Keychain and never leaves it except to log in over SSH."))
+                Text(AppLocalization.string("The password is stored in this device's Keychain and never leaves it except to log in over SSH."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

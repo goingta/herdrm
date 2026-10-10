@@ -85,6 +85,7 @@ extension FocusedValues {
 struct HerdrMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
+    @State private var languagePreference = AppLanguagePreference.shared
     @FocusedValue(\.appModel) private var focusedModel
     @FocusedValue(\.splitAxis) private var focusedSplitAxis
 
@@ -94,7 +95,6 @@ struct HerdrMApp: App {
         if ProcessInfo.processInfo.environment[SSHCredentialStore.askPassModeEnvironmentKey] == "1" {
             Self.runSSHAskPass()
         }
-        AppLanguage.synchronize()
         SSHCredentialStore.purgeAuthorizations()
         TerminalDefaults.registerBundledFonts()
         updaterController = SPUStandardUpdaterController(
@@ -107,6 +107,8 @@ struct HerdrMApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: appDelegate.model)
+                .environment(languagePreference)
+                .environment(\.locale, languagePreference.locale)
                 .preferredColorScheme(AppearancePreference(rawValue: themePreference)?.colorScheme)
                 .onAppear { Self.applyTheme(themePreference) }
                 .onChange(of: themePreference) { _, newValue in
@@ -119,32 +121,32 @@ struct HerdrMApp: App {
             // herdrm is a single-window console: a second window would duplicate the
             // whole device tree, so New Window gives up ⌘N to the action that matters.
             CommandGroup(replacing: .newItem) {
-                Button("New Agent") { focusedModel?.showNewAgent = true }
+                Button(AppLocalization.string("New Agent")) { focusedModel?.showNewAgent = true }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(focusedModel == nil)
-                Button("New Terminal") { focusedModel?.showNewTerminal = true }
+                Button(AppLocalization.string("New Terminal")) { focusedModel?.showNewTerminal = true }
                     .keyboardShortcut("t", modifiers: .command)
                     .disabled(focusedModel == nil)
-                Button("New Space") { focusedModel?.showNewSpace = true }
+                Button(AppLocalization.string("New Space")) { focusedModel?.showNewSpace = true }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(focusedModel == nil)
             }
 
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") {
+                Button(AppLocalization.string("Check for Updates…")) {
                     updaterController.checkForUpdates(nil)
                 }
             }
 
-            CommandMenu("Terminal") {
+            CommandMenu(AppLocalization.string("Terminal")) {
                 // Guarded on selectedAttachedEntry, not just on the model: with the placeholder
                 // on screen there is no SplitContainer to render into, so a split would
                 // be invisible yet leave shellSplitAxis non-nil — and the next ⌘W would
                 // "close" that phantom instead of the window.
-                Button("Split Vertically") { focusedModel?.shellSplitAxis = .vertical }
+                Button(AppLocalization.string("Split Vertically")) { focusedModel?.shellSplitAxis = .vertical }
                     .keyboardShortcut("d", modifiers: .command)
                     .disabled(focusedModel?.selectedAttachedEntry == nil)
-                Button("Split Horizontally") { focusedModel?.shellSplitAxis = .horizontal }
+                Button(AppLocalization.string("Split Horizontally")) { focusedModel?.shellSplitAxis = .horizontal }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                     .disabled(focusedModel?.selectedAttachedEntry == nil)
 
@@ -159,22 +161,22 @@ struct HerdrMApp: App {
                 //
                 // Focus is directional and idempotent: the left/top pane is always the
                 // agent, the right/bottom one always the shell.
-                Button("Focus Left Pane") {
+                Button(AppLocalization.string("Focus Left Pane")) {
                     if let model = focusedModel { focusSplitSide(.agent, in: model) }
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                 .disabled(focusedSplitAxis != .vertical)
-                Button("Focus Right Pane") {
+                Button(AppLocalization.string("Focus Right Pane")) {
                     if let model = focusedModel { focusSplitSide(.shell, in: model) }
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                 .disabled(focusedSplitAxis != .vertical)
-                Button("Focus Top Pane") {
+                Button(AppLocalization.string("Focus Top Pane")) {
                     if let model = focusedModel { focusSplitSide(.agent, in: model) }
                 }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 .disabled(focusedSplitAxis != .horizontal)
-                Button("Focus Bottom Pane") {
+                Button(AppLocalization.string("Focus Bottom Pane")) {
                     if let model = focusedModel { focusSplitSide(.shell, in: model) }
                 }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])
@@ -183,22 +185,22 @@ struct HerdrMApp: App {
                 Divider()
 
                 // Resize moves the divider by 5% relative to the active pane.
-                Button("Widen Active Pane") {
+                Button(AppLocalization.string("Widen Active Pane")) {
                     if let model = focusedModel { resizeSplit(grow: true, in: model) }
                 }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
                 .disabled(focusedSplitAxis != .vertical)
-                Button("Narrow Active Pane") {
+                Button(AppLocalization.string("Narrow Active Pane")) {
                     if let model = focusedModel { resizeSplit(grow: false, in: model) }
                 }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
                 .disabled(focusedSplitAxis != .vertical)
-                Button("Grow Active Pane") {
+                Button(AppLocalization.string("Grow Active Pane")) {
                     if let model = focusedModel { resizeSplit(grow: true, in: model) }
                 }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .control])
                 .disabled(focusedSplitAxis != .horizontal)
-                Button("Shrink Active Pane") {
+                Button(AppLocalization.string("Shrink Active Pane")) {
                     if let model = focusedModel { resizeSplit(grow: false, in: model) }
                 }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .control])
@@ -223,13 +225,15 @@ struct HerdrMApp: App {
 
         Settings {
             SettingsView(model: appDelegate.model)
+                .environment(languagePreference)
+                .environment(\.locale, languagePreference.locale)
         }
     }
 
     private var closeButtonTitle: String {
-        if focusedModel?.shellSplitAxis != nil { return String(localized: "Close Split") }
-        if focusedModel?.selectedShell != nil { return String(localized: "Close Terminal") }
-        return String(localized: "Close")
+        if focusedModel?.shellSplitAxis != nil { return AppLocalization.string("Close Split") }
+        if focusedModel?.selectedShell != nil { return AppLocalization.string("Close Terminal") }
+        return AppLocalization.string("Close")
     }
 
     static func applyTheme(_ preference: String) {
@@ -358,7 +362,7 @@ struct AgentsSettingsView: View {
                             TextField("", text: argBinding(row.kind), prompt: Text("No extra arguments"))
                                 .labelsHidden()
                                 .font(.system(size: 11.5).monospaced())
-                                .help(String(localized: "Arguments appended to \(HerdrService.binaryName(for: row.kind)) when starting this agent."))
+                                .help(AppLocalization.string("Arguments appended to \(HerdrService.binaryName(for: row.kind)) when starting this agent."))
                             if AgentLaunchArgsStore.stored()[row.kind] != nil {
                                 Button {
                                     AgentLaunchArgsStore.reset(row.kind)
@@ -386,7 +390,7 @@ struct AgentsSettingsView: View {
                         TextField("", text: binding(row.kind), prompt: Text("Automatic"))
                             .labelsHidden()
                             .font(.system(size: 11.5).monospaced())
-                            .help(String(localized: "Command or path for \(HerdrService.binaryName(for: row.kind)). Leave empty to detect."))
+                            .help(AppLocalization.string("Command or path for \(HerdrService.binaryName(for: row.kind)). Leave empty to detect."))
                     }
                 }
             } header: {
@@ -490,11 +494,11 @@ struct TerminalSettingsView: View {
                 }
 
                 Picker("Weight", selection: $fontWeight) {
-                    Text(String(localized: "font.weight.light", defaultValue: "Light"))
+                    Text(AppLocalization.string("font.weight.light", defaultValue: "Light"))
                         .tag(Double(NSFont.Weight.light.rawValue))
-                    Text(String(localized: "font.weight.regular", defaultValue: "Regular"))
+                    Text(AppLocalization.string("font.weight.regular", defaultValue: "Regular"))
                         .tag(TerminalDefaults.defaultFontWeight)
-                    Text(String(localized: "font.weight.medium", defaultValue: "Medium"))
+                    Text(AppLocalization.string("font.weight.medium", defaultValue: "Medium"))
                         .tag(Double(NSFont.Weight.medium.rawValue))
                 }
                 .pickerStyle(.segmented)
@@ -587,8 +591,8 @@ struct TerminalSettingsView: View {
     private func importFromGhostty() {
         guard let config = GhosttyConfigImporter.load() else {
             importSucceeded = false
-            importMessage = String(
-                localized: "ghostty.import.none",
+            importMessage = AppLocalization.string(
+                "ghostty.import.none",
                 defaultValue: "No Ghostty config found at ~/.config/ghostty/config."
             )
             return
@@ -618,8 +622,8 @@ struct TerminalSettingsView: View {
 
         if applied.isEmpty && skipped.isEmpty {
             importSucceeded = false
-            importMessage = String(
-                localized: "ghostty.import.empty",
+            importMessage = AppLocalization.string(
+                "ghostty.import.empty",
                 defaultValue: "Ghostty config has no font settings to import."
             )
         } else if applied.isEmpty {
@@ -636,14 +640,12 @@ struct TerminalSettingsView: View {
 
 struct AppearanceSettingsView: View {
     @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
-    @AppStorage(AppLanguage.defaultsKey) private var language = AppLanguage.system.rawValue
-
     var body: some View {
         Form {
             Picker("Theme", selection: $themePreference) {
-                Text(String(localized: "theme.system", defaultValue: "System")).tag("system")
-                Text(String(localized: "theme.light", defaultValue: "Light")).tag("light")
-                Text(String(localized: "theme.dark", defaultValue: "Dark")).tag("dark")
+                Text(AppLocalization.string("theme.system", defaultValue: "System")).tag("system")
+                Text(AppLocalization.string("theme.light", defaultValue: "Light")).tag("light")
+                Text(AppLocalization.string("theme.dark", defaultValue: "Dark")).tag("dark")
             }
             .pickerStyle(.segmented)
             Text("The terminal follows the app theme.")
@@ -651,25 +653,7 @@ struct AppearanceSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            LabeledContent("Language") {
-                HStack(spacing: 8) {
-                    Picker("Language", selection: $language) {
-                        ForEach(AppLanguage.allCases) { option in
-                            Text(verbatim: option.displayName).tag(option.rawValue)
-                        }
-                    }
-                    .labelsHidden()
-                    .onChange(of: language) { _, newValue in
-                        AppLanguage.apply(AppLanguage(rawValue: newValue) ?? .system)
-                    }
-                    if AppLanguage.needsRelaunch(AppLanguage(rawValue: language) ?? .system) {
-                        Button("Relaunch") {
-                            AppLanguage.relaunch()
-                        }
-                        .help("Quit and reopen herdrm so the new language takes effect.")
-                    }
-                }
-            }
+            LanguagePickerSection()
         }
         .padding(20)
     }
@@ -768,7 +752,7 @@ struct TailcatSettingsView: View {
         .padding(20)
         .onAppear { model.loadTailcatClientPublicKey() }
         .confirmationDialog(
-            String(localized: "Regenerate the tailcat client key?"),
+            AppLocalization.string("Regenerate the tailcat client key?"),
             isPresented: $confirmRegenerate
         ) {
             Button("Regenerate", role: .destructive) { model.regenerateTailcatClientKey() }

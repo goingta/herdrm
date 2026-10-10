@@ -462,9 +462,9 @@ struct DetailView: View {
     private func statusPill(_ status: AgentStatus) -> some View {
         let label: String? = {
             switch status {
-            case .working: return String(localized: "Working")
-            case .blocked: return String(localized: "Needs input")
-            case .done: return String(localized: "Done")
+            case .working: return AppLocalization.string("Working")
+            case .blocked: return AppLocalization.string("Needs input")
+            case .done: return AppLocalization.string("Done")
             case .idle, .unknown: return nil
             }
         }()
@@ -718,12 +718,12 @@ struct DetailView: View {
             Image(systemName: dropped ? "bolt.horizontal.circle" : "rectangle.slash")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Theme.textGhost)
-            Text(dropped ? String(localized: "Connection to \(entry.device.name) dropped") : String(localized: "Terminal session ended"))
+            Text(dropped ? AppLocalization.string("Connection to \(entry.device.name) dropped") : AppLocalization.string("Terminal session ended"))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Theme.text)
             Text(dropped
-                ? String(localized: "The SSH connection behind this terminal went away.")
-                : String(localized: "Another client took this pane over, or the attach closed."))
+                ? AppLocalization.string("The SSH connection behind this terminal went away.")
+                : AppLocalization.string("Another client took this pane over, or the attach closed."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textTertiary)
             Button("Reconnect") {
@@ -758,15 +758,15 @@ struct DetailView: View {
 
     private var placeholderText: String {
         switch model.connection {
-        case .connecting: return String(localized: "Connecting…")
+        case .connecting: return AppLocalization.string("Connecting…")
         case .failed(let reason): return reason
         default:
             if model.selectedSpace != nil
                 && model.visibleAgents.isEmpty
                 && model.visibleTerminals.isEmpty {
-                return String(localized: "No agents or terminals in this space yet")
+                return AppLocalization.string("No agents or terminals in this space yet")
             }
-            return String(localized: "Select an agent or terminal, or start a new one")
+            return AppLocalization.string("Select an agent or terminal, or start a new one")
         }
     }
 
@@ -796,17 +796,17 @@ struct AddDeviceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "desktopcomputer",
-                title: String(localized: "Add Device"),
+                title: AppLocalization.string("Add Device"),
                 subtitle: transport == .ssh
-                    ? String(localized: "Uses OpenSSH config, agent, Tailscale SSH, or password")
-                    : String(localized: "WireGuard tunnel to a herdr behind NAT — no VPN, no account")
+                    ? AppLocalization.string("Uses OpenSSH config, agent, Tailscale SSH, or password")
+                    : AppLocalization.string("WireGuard tunnel to a herdr behind NAT — no VPN, no account")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 8) {
                 Picker("", selection: $transport) {
-                    Text(String(localized: "SSH")).tag(Transport.ssh)
-                    Text(String(localized: "Tailcat")).tag(Transport.tailcat)
+                    Text(AppLocalization.string("SSH")).tag(Transport.ssh)
+                    Text(AppLocalization.string("Tailcat")).tag(Transport.tailcat)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -860,7 +860,7 @@ struct AddDeviceSheet: View {
                         )
                     case .tailcat:
                         model.addTailcatDevice(
-                            name: trimmedName.isEmpty ? String(localized: "Tailcat Device") : trimmedName,
+                            name: trimmedName.isEmpty ? AppLocalization.string("Tailcat Device") : trimmedName,
                             token: token.trimmingCharacters(in: .whitespacesAndNewlines)
                         )
                     }
@@ -893,7 +893,7 @@ struct TailcatClientKeyRow: View {
                 // so the whole key stays visible and selectable.
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(copied ? String(localized: "Copied") : String(localized: "Copy")) {
+            Button(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy")) {
                 guard let publicKey else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(publicKey, forType: .string)
@@ -919,7 +919,7 @@ struct SSHAuthenticationSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "key.fill",
-                title: String(localized: "SSH Authentication"),
+                title: AppLocalization.string("SSH Authentication"),
                 subtitle: request.target
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
@@ -929,7 +929,7 @@ struct SSHAuthenticationSheet: View {
                 SecureField("SSH password", text: $password)
                     .textFieldStyle(.roundedBorder)
                     .focused($passwordFocused)
-                Label(String(localized: "Saved in your macOS login Keychain"), systemImage: "lock.fill")
+                Label(AppLocalization.string("Saved in your macOS login Keychain"), systemImage: "lock.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -1015,8 +1015,8 @@ struct NewSpaceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "folder.badge.plus",
-                title: String(localized: "New Space"),
-                subtitle: String(localized: "A herdr workspace rooted at a project directory on \(chosenDevice.name)")
+                title: AppLocalization.string("New Space"),
+                subtitle: AppLocalization.string("A herdr workspace rooted at a project directory on \(chosenDevice.name)")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
@@ -1040,12 +1040,12 @@ struct NewSpaceSheet: View {
                     // A tailcat tunnel carries only the herdr socket: no folder
                     // listing and no remote $HOME to expand "~" against. The path
                     // goes to herdr verbatim, so any host's syntax works (/…, C:\…).
-                    Text(String(localized: "Full path on \(chosenDevice.name), e.g. /Users/me/project or C:\\project; folder browsing and ~ aren't available over a tailcat tunnel"))
+                    Text(AppLocalization.string("Full path on \(chosenDevice.name), e.g. /Users/me/project or C:\\project; folder browsing and ~ aren't available over a tailcat tunnel"))
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if !chosenDevice.isLocal {
-                    Text(String(localized: "Path on \(chosenDevice.name); ~ expands to its home directory"))
+                    Text(AppLocalization.string("Path on \(chosenDevice.name); ~ expands to its home directory"))
                         .font(.system(size: 10.5))
                         .foregroundStyle(Theme.textTertiary)
                 }
@@ -1197,7 +1197,7 @@ struct DirectoryPickerField: View {
                     }
                 }
                 if visibleEntries.isEmpty && !isListing {
-                    Text(entries.isEmpty ? String(localized: "No subfolders") : String(localized: "No folders match \"\(filter)\""))
+                    Text(entries.isEmpty ? AppLocalization.string("No subfolders") : AppLocalization.string("No folders match \"\(filter)\""))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textGhost)
                         .padding(8)
@@ -1303,7 +1303,7 @@ struct NewTerminalSheet: View {
     private var isStandalone: Bool { workspaceID.isEmpty }
 
     private var spaceLabel: String {
-        spaces.first { $0.workspaceID == workspaceID }?.label ?? String(localized: "a Herdr space")
+        spaces.first { $0.workspaceID == workspaceID }?.label ?? AppLocalization.string("a Herdr space")
     }
 
     /// Standalone shells run over SSH; a tailcat tunnel carries only the herdr
@@ -1313,17 +1313,17 @@ struct NewTerminalSheet: View {
     private var subtitle: String {
         if isStandalone && allowsStandalone {
             return chosenDevice.isLocal
-                ? String(localized: "Start a login shell on this Mac")
-                : String(localized: "Connect to \(chosenDevice.name) over SSH")
+                ? AppLocalization.string("Start a login shell on this Mac")
+                : AppLocalization.string("Connect to \(chosenDevice.name) over SSH")
         }
-        return String(localized: "Creates a persistent shell in \(spaceLabel) on \(chosenDevice.name)")
+        return AppLocalization.string("Creates a persistent shell in \(spaceLabel) on \(chosenDevice.name)")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "terminal",
-                title: String(localized: "New Terminal"),
+                title: AppLocalization.string("New Terminal"),
                 subtitle: subtitle
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
@@ -1350,7 +1350,7 @@ struct NewTerminalSheet: View {
                 // shell; Standalone is an app-owned process (plain login shell
                 // or ssh) that needs no herdr on the device at all.
                 if !allowsStandalone && spaces.isEmpty {
-                    Text(String(localized: "\(chosenDevice.name) has no spaces yet. Terminals over a tailcat tunnel need a space; create one first."))
+                    Text(AppLocalization.string("\(chosenDevice.name) has no spaces yet. Terminals over a tailcat tunnel need a space; create one first."))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1458,10 +1458,10 @@ struct NewAgentSheet: View {
     private var spaceLabel: String {
         if workspaceID.isEmpty, session.workspaces.isEmpty, case .connected = session.connection {
             return chosenDevice.isLocal
-                ? String(localized: "a new space in your home folder")
-                : String(localized: "a new space")
+                ? AppLocalization.string("a new space in your home folder")
+                : AppLocalization.string("a new space")
         }
-        if workspaceID.isEmpty { return String(localized: "the focused space") }
+        if workspaceID.isEmpty { return AppLocalization.string("the focused space") }
         return session.workspaces.first { $0.workspaceID == workspaceID }?.label ?? workspaceID
     }
 
@@ -1469,8 +1469,8 @@ struct NewAgentSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "sparkles",
-                title: String(localized: "New Agent"),
-                subtitle: String(localized: "Starts in \(spaceLabel), attached to its live terminal")
+                title: AppLocalization.string("New Agent"),
+                subtitle: AppLocalization.string("Starts in \(spaceLabel), attached to its live terminal")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
@@ -1498,15 +1498,15 @@ struct NewAgentSheet: View {
                     case .loading:
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text(String(localized: "Checking agents on \(chosenDevice.name)…"))
+                            Text(AppLocalization.string("Checking agents on \(chosenDevice.name)…"))
                                 .foregroundStyle(Theme.textSecondary)
                         }
                         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
                     case .failed(let message):
                         VStack(alignment: .leading, spacing: 8) {
                             Text(chosenDevice.isLocal
-                                ? String(localized: "Couldn’t check installed agent CLIs.")
-                                : String(localized: "Couldn’t load this server’s agent catalog."))
+                                ? AppLocalization.string("Couldn’t check installed agent CLIs.")
+                                : AppLocalization.string("Couldn’t load this server’s agent catalog."))
                                 .foregroundStyle(Theme.textSecondary)
                             Text(message)
                                 .font(.system(size: 10.5))
@@ -1518,8 +1518,8 @@ struct NewAgentSheet: View {
                         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
                     case .loaded(let loadedKinds, _) where loadedKinds.isEmpty:
                         Text(chosenDevice.isLocal
-                            ? String(localized: "No supported agent CLI was found on this Mac. Install one, or set a binary path in Settings → Agents.")
-                            : String(localized: "This server advertises no agent manifests."))
+                            ? AppLocalization.string("No supported agent CLI was found on this Mac. Install one, or set a binary path in Settings → Agents.")
+                            : AppLocalization.string("This server advertises no agent manifests."))
                             .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
                     case .loaded(let loadedKinds, let paths):
@@ -1558,8 +1558,8 @@ struct NewAgentSheet: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12).monospaced())
                     Text(parsedArguments == nil
-                        ? String(localized: "Unterminated quote in arguments.")
-                        : String(localized: "Appended to \(HerdrService.binaryName(for: kind)). Defaults live in Settings → Agents."))
+                        ? AppLocalization.string("Unterminated quote in arguments.")
+                        : AppLocalization.string("Appended to \(HerdrService.binaryName(for: kind)). Defaults live in Settings → Agents."))
                         .font(.system(size: 10.5))
                         .foregroundStyle(parsedArguments == nil ? Color.red : Theme.textTertiary)
 
@@ -1677,8 +1677,8 @@ struct RenameSpaceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "pencil",
-                title: String(localized: "Rename Space"),
-                subtitle: String(localized: "Rename \(entry.workspace.label) on \(entry.device.name)")
+                title: AppLocalization.string("Rename Space"),
+                subtitle: AppLocalization.string("Rename \(entry.workspace.label) on \(entry.device.name)")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
@@ -1726,8 +1726,8 @@ struct RenameAgentSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "pencil",
-                title: String(localized: "Rename Agent"),
-                subtitle: String(localized: "Rename \(entry.title) on \(entry.device.name)")
+                title: AppLocalization.string("Rename Agent"),
+                subtitle: AppLocalization.string("Rename \(entry.title) on \(entry.device.name)")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
@@ -1778,8 +1778,8 @@ struct RenameTerminalSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "pencil",
-                title: String(localized: "Rename Terminal"),
-                subtitle: String(localized: "Rename \(entry.title) on \(entry.device.name)")
+                title: AppLocalization.string("Rename Terminal"),
+                subtitle: AppLocalization.string("Rename \(entry.title) on \(entry.device.name)")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
@@ -1834,10 +1834,10 @@ struct EditDeviceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 systemImage: "pencil",
-                title: String(localized: "Edit Device"),
+                title: AppLocalization.string("Edit Device"),
                 subtitle: device.isTailcat
-                    ? String(localized: "Changing the tailcat token reconnects the device")
-                    : String(localized: "Changing the SSH target reconnects the device")
+                    ? AppLocalization.string("Changing the tailcat token reconnects the device")
+                    : AppLocalization.string("Changing the SSH target reconnects the device")
             )
             Rectangle().fill(Theme.hairline).frame(height: 1)
 
