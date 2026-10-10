@@ -8,6 +8,8 @@
 
 新增工作尚未拆成 GitHub Issue，不为它预分配 Issue 编号，也未修改现有 GitHub 依赖关系。上述是实施优先级调整，原有功能之间的依赖继续适用。
 
+2026-10-10 书面规格复核通过，已形成[新增六项功能任务的拆分草案](../mac-iphone-visual-consistency-tickets/README.md)。草案列明独立交付、阻塞关系及与原有 #1–#18 的完整实施顺序，任务颗粒度待确认后发布。
+
 ## GitHub 任务与阻塞关系
 
 | 本地编号 | GitHub Issue | Blocked by |
