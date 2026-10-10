@@ -75,9 +75,9 @@ struct SpaceRowDragHost: View {
             entryID: entryID,
             pasteboardType: SidebarRowDragNSView.spacePasteboardType,
             menuItems: [
-                .item(title: String(localized: "Rename Space…"), action: onRename),
+                .item(title: AppLocalization.string("Rename Space…"), action: onRename),
                 .separator,
-                .destructive(title: String(localized: "Close Space \"\(label)\"…"), action: onClose),
+                .destructive(title: AppLocalization.string("Close Space \"\(label)\"…"), action: onClose),
             ],
             onClick: onClick,
             onDoubleClick: onRename,
@@ -128,7 +128,7 @@ struct AgentRowDragHost: View {
     /// plugin: grazr's account swap, agent-quota's refresh, …
     private var menuItems: [SidebarContextMenuItem] {
         var items: [SidebarContextMenuItem] = [
-            .item(title: String(localized: "Rename Agent…"), action: onRename),
+            .item(title: AppLocalization.string("Rename Agent…"), action: onRename),
         ]
         if !pluginActions.isEmpty {
             items.append(.separator)
@@ -138,7 +138,7 @@ struct AgentRowDragHost: View {
                 }
                 if group.pluginID == Grazr.pluginID {
                     var accounts: [SidebarContextMenuItem] = [
-                        .item(title: String(localized: "Accounts…"), action: onGrazrAccounts),
+                        .item(title: AppLocalization.string("Accounts…"), action: onGrazrAccounts),
                     ]
                     if let switchMenu = grazrSwitchMenu {
                         accounts.append(switchMenu)
@@ -150,7 +150,7 @@ struct AgentRowDragHost: View {
             }
         }
         items.append(.separator)
-        items.append(.destructive(title: String(localized: "Close Agent…"), action: onClose))
+        items.append(.destructive(title: AppLocalization.string("Close Agent…"), action: onClose))
         return items
     }
 
@@ -162,7 +162,7 @@ struct AgentRowDragHost: View {
         let accounts: [SidebarContextMenuItem] = report.sortedAccounts.map { account in
             var title = account.name
             if account.id != report.active, let block = report.block(for: account, now: now) {
-                title = String(localized: "\(account.name) (blocked: \(block.reason))")
+                title = AppLocalization.string("\(account.name) (blocked: \(block.reason))")
             }
             return .choice(
                 title: title,
@@ -170,7 +170,7 @@ struct AgentRowDragHost: View {
                 action: report.canSwitch(to: account, now: now) ? { onSwitchGrazrAccount(account) } : nil
             )
         }
-        return .submenu(title: String(localized: "Switch to Account"), items: accounts)
+        return .submenu(title: AppLocalization.string("Switch to Account"), items: accounts)
     }
 
     /// One per account whose login grazr found refused.
@@ -181,7 +181,7 @@ struct AgentRowDragHost: View {
             .filter { report.needsSignIn($0, now: now) }
             .map { account in
                 .item(
-                    title: String(localized: "Re-authenticate \(account.name)…"),
+                    title: AppLocalization.string("Re-authenticate \(account.name)…"),
                     action: { onReauthenticateGrazrAccount(account) }
                 )
             }
@@ -204,9 +204,9 @@ struct TerminalRowDragHost: View {
             entryID: entryID,
             pasteboardType: SidebarRowDragNSView.terminalPasteboardType,
             menuItems: [
-                .item(title: String(localized: "Rename Terminal…"), action: onRename),
+                .item(title: AppLocalization.string("Rename Terminal…"), action: onRename),
                 .separator,
-                .destructive(title: String(localized: "Close Terminal…"), action: onClose),
+                .destructive(title: AppLocalization.string("Close Terminal…"), action: onClose),
             ],
             onClick: onClick,
             onDoubleClick: onRename,

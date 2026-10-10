@@ -121,8 +121,8 @@ private final class DeviceFileTransferModel: ObservableObject {
         progress = nil
         error = nil
         label = direction == .upload
-            ? String(localized: "Uploading \(entry.name)")
-            : String(localized: "Downloading \(entry.name)")
+            ? AppLocalization.string("Uploading \(entry.name)")
+            : AppLocalization.string("Downloading \(entry.name)")
 
         let progressHandler: DeviceFileService.ProgressHandler = { [weak self] value in
             Task { @MainActor in self?.progress = value }
@@ -187,7 +187,7 @@ struct DeviceFilesView: View {
             deviceBar
             Rectangle().fill(Theme.hairline).frame(height: 1)
             HStack(spacing: 0) {
-                DeviceFilePane(title: String(localized: "Local"), device: .local, browser: local)
+                DeviceFilePane(title: AppLocalization.string("Local"), device: .local, browser: local)
                 transferButtons
                 DeviceFilePane(title: targetDevice.name, device: targetDevice, browser: target)
             }

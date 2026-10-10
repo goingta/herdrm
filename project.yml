@@ -35,6 +35,7 @@ targets:
     platform: macOS
     sources:
       - Sources/HerdrM
+      - Sources/HerdrShared
       - path: Resources
         buildPhase: resources
         excludes:
@@ -101,6 +102,8 @@ targets:
     deploymentTarget: "18.0"
     sources:
       - Sources/HerdrMobile
+      - Sources/HerdrShared
+      - path: Resources/Localizable.xcstrings
       - path: Resources/AppIcon/MobileAssets.xcassets
         buildPhase: resources
     dependencies:
@@ -128,9 +131,13 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations:
+          - en
+          - zh-Hans
         NSLocalNetworkUsageDescription: >-
-          herdrm connects to your Macs over SSH on your local network to reach
-          the herdr session running on them.
+          herdrm connects to your development machines over SSH on your local network
+          to reach the herdr sessions running on them.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.ios
@@ -155,6 +162,7 @@ targets:
     deploymentTarget: "18.0"
     sources:
       - Tests/HerdrMobileTests
+      - Tests/HerdrSharedTests
     dependencies:
       - target: HerdrMobile
     settings:
@@ -170,6 +178,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests/HerdrMTests
+      - Tests/HerdrSharedTests
     dependencies:
       - target: HerdrM
     settings:
