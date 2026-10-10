@@ -5441,6 +5441,227 @@
         }
       }
     },
+    "SSH Network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH Network"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 网络"
+          }
+        }
+      }
+    },
+    "SSH Route": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH Route"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SSH 连接方式"
+          }
+        }
+      }
+    },
+    "Direct Connection": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct Connection"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直连"
+          }
+        }
+      }
+    },
+    "HTTP CONNECT": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP CONNECT"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP CONNECT"
+          }
+        }
+      }
+    },
+    "Gateway host or IP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway host or IP"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关主机或 IP"
+          }
+        }
+      }
+    },
+    "Gateway port": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway port"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关端口"
+          }
+        }
+      }
+    },
+    "The gateway opens a tunnel to the SSH host above. SSH still verifies and authenticates the development machine.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The gateway opens a tunnel to the SSH host above. SSH still verifies and authenticates the development machine."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关建立到上方 SSH 主机的隧道。SSH 仍会校验开发机身份并进行用户认证。"
+          }
+        }
+      }
+    },
+    "Enter a gateway hostname or IP address, without a URL or port.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a gateway hostname or IP address, without a URL or port."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入网关主机名或 IP 地址，不要包含网址或端口。"
+          }
+        }
+      }
+    },
+    "Gateway port must be between 1 and 65535.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway port must be between 1 and 65535."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关端口必须在 1–65535 之间。"
+          }
+        }
+      }
+    },
+    "Cannot reach the HTTP CONNECT gateway. Check its host, port and network access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot reach the HTTP CONNECT gateway. Check its host, port and network access."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接 HTTP CONNECT 网关。请检查网关主机、端口和网络是否可达。"
+          }
+        }
+      }
+    },
+    "The HTTP CONNECT gateway timed out. Check the gateway address and whether it can reach the SSH host.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The HTTP CONNECT gateway timed out. Check the gateway address and whether it can reach the SSH host."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP CONNECT 网关连接超时。请检查网关地址，以及网关是否能访问 SSH 主机。"
+          }
+        }
+      }
+    },
+    "The HTTP CONNECT gateway refused the tunnel (HTTP %lld). Check the SSH host and gateway policy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The HTTP CONNECT gateway refused the tunnel (HTTP %lld). Check the SSH host and gateway policy."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HTTP CONNECT 网关拒绝建立隧道（HTTP %lld）。请检查 SSH 主机和网关访问策略。"
+          }
+        }
+      }
+    },
+    "The gateway did not return a valid HTTP CONNECT response. Check that its port supports HTTP CONNECT.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The gateway did not return a valid HTTP CONNECT response. Check that its port supports HTTP CONNECT."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网关未返回有效的 HTTP CONNECT 响应。请确认该端口支持 HTTP CONNECT。"
+          }
+        }
+      }
+    },
     "Completed, unread": {
       "extractionState": "manual",
       "localizations": {

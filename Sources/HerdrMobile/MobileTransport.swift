@@ -31,6 +31,10 @@ extension MobileTransport {
 }
 
 enum MobileTransportError: LocalizedError {
+    case gatewayUnavailable
+    case gatewayTimedOut
+    case gatewayRejected(status: Int)
+    case gatewayInvalidResponse
     case hostKeyChanged(fingerprint: String)
     case missingPassword
     case homeProbeFailed
@@ -38,6 +42,14 @@ enum MobileTransportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .gatewayUnavailable:
+            return AppLocalization.string("Cannot reach the HTTP CONNECT gateway. Check its host, port and network access.")
+        case .gatewayTimedOut:
+            return AppLocalization.string("The HTTP CONNECT gateway timed out. Check the gateway address and whether it can reach the SSH host.")
+        case .gatewayRejected(let status):
+            return AppLocalization.string("The HTTP CONNECT gateway refused the tunnel (HTTP \(status)). Check the SSH host and gateway policy.")
+        case .gatewayInvalidResponse:
+            return AppLocalization.string("The gateway did not return a valid HTTP CONNECT response. Check that its port supports HTTP CONNECT.")
         case .hostKeyChanged(let fingerprint):
             return AppLocalization.string(
                 "This device's SSH host key changed (\(fingerprint)). If the host was reinstalled, remove and re-add the device."
@@ -70,10 +82,23 @@ final class SSHDirectTransport: MobileTransport {
     /// authenticates (device key or Keychain password), and resolves the
     /// remote herdr socket path against the remote $HOME.
     static func connect(device: MobileDevice) async throws -> SSHDirectTransport {
-        let connection = try await SSHConnection.connect(
-            to: SSHEndpoint(host: device.host, port: device.port),
-            timeout: .seconds(10)
-        )
+        let connection: SSHConnection
+        do {
+            connection = try await SSHConnection.connect(
+                to: SSHEndpoint(host: device.host, port: device.port),
+                via: device.sshRoute == .httpConnect
+                    ? SSHEndpoint(host: device.gatewayHost, port: device.gatewayPort) : nil,
+                timeout: .seconds(10)
+            )
+        } catch let error as SSHError {
+            switch error {
+            case .httpConnectUnavailable: throw MobileTransportError.gatewayUnavailable
+            case .httpConnectTimedOut: throw MobileTransportError.gatewayTimedOut
+            case .httpConnectRejected(let status): throw MobileTransportError.gatewayRejected(status: status)
+            case .invalidHTTPConnectResponse: throw MobileTransportError.gatewayInvalidResponse
+            default: throw error
+            }
+        }
         do {
             let hostKey = connection.hostKey
             let fingerprint = Self.fingerprint(hostKey.key)

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Network
 
 /// A Mac (or other host) running herdr, reached over SSH or through the
 /// herdr.tailcat plugin's tunnel. Unlike the Mac app there is no "Local"
@@ -11,6 +12,11 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         /// Control plane only on iOS: the tunnel carries the herdr API and
         /// client sockets but no shell, so terminal attach stays SSH-only.
         case tailcat
+    }
+
+    enum SSHRoute: String, Codable, CaseIterable {
+        case direct
+        case httpConnect
     }
 
     enum AuthMethod: String, Codable, CaseIterable {
@@ -26,6 +32,9 @@ struct MobileDevice: Codable, Identifiable, Hashable {
     var port: UInt16
     var username: String
     var authMethod: AuthMethod
+    var sshRoute: SSHRoute
+    var gatewayHost: String
+    var gatewayPort: UInt16
     /// Socket path override; nil means ~/.config/herdr/herdr.sock on the host.
     var socketPath: String?
 
@@ -37,7 +46,10 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         port: UInt16 = 22,
         username: String = "",
         authMethod: AuthMethod = .deviceKey,
-        socketPath: String? = nil
+        socketPath: String? = nil,
+        sshRoute: SSHRoute = .direct,
+        gatewayHost: String = "",
+        gatewayPort: UInt16 = 8080
     ) {
         self.id = id
         self.kind = kind
@@ -47,6 +59,9 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         self.username = username
         self.authMethod = authMethod
         self.socketPath = socketPath
+        self.sshRoute = sshRoute
+        self.gatewayHost = gatewayHost
+        self.gatewayPort = gatewayPort
     }
 
     /// Devices stored before the tailcat kind existed decode as SSH.
@@ -60,6 +75,9 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         authMethod = try container.decodeIfPresent(AuthMethod.self, forKey: .authMethod) ?? .deviceKey
         socketPath = try container.decodeIfPresent(String.self, forKey: .socketPath)
+        sshRoute = try container.decodeIfPresent(SSHRoute.self, forKey: .sshRoute) ?? .direct
+        gatewayHost = try container.decodeIfPresent(String.self, forKey: .gatewayHost) ?? ""
+        gatewayPort = try container.decodeIfPresent(UInt16.self, forKey: .gatewayPort) ?? 8080
     }
 
     var isTailcat: Bool { kind == .tailcat }
@@ -73,6 +91,16 @@ struct MobileDevice: Codable, Identifiable, Hashable {
             guard !result.host.isEmpty else { throw MobileDeviceError.emptyHost }
             guard !result.username.isEmpty else { throw MobileDeviceError.emptyUsername }
             guard port > 0 else { throw MobileDeviceError.invalidPort }
+            result.gatewayHost = gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            if sshRoute == .httpConnect {
+                guard !result.gatewayHost.isEmpty,
+                      !result.gatewayHost.contains(where: { $0.isWhitespace || "/@?#[]".contains($0) }),
+                      (!result.gatewayHost.contains(":") || IPv6Address(result.gatewayHost) != nil),
+                      !result.gatewayHost.unicodeScalars.contains(where: { $0.value < 33 || $0.value == 127 }) else {
+                    throw MobileDeviceError.invalidGatewayHost
+                }
+                guard gatewayPort > 0 else { throw MobileDeviceError.invalidGatewayPort }
+            }
             let socket = socketPath?.trimmingCharacters(in: .whitespacesAndNewlines)
             result.socketPath = socket?.isEmpty == false ? socket : nil
         }
@@ -94,6 +122,7 @@ struct MobileDevice: Codable, Identifiable, Hashable {
 
 enum MobileDeviceError: LocalizedError {
     case emptyHost, emptyUsername, invalidPort, deviceNotFound, missingPassword
+    case invalidGatewayHost, invalidGatewayPort
     case keychain(OSStatus)
 
     var errorDescription: String? {
@@ -103,6 +132,8 @@ enum MobileDeviceError: LocalizedError {
         case .invalidPort: return AppLocalization.string("SSH port must be between 1 and 65535.")
         case .deviceNotFound: return AppLocalization.string("This device no longer exists. Reopen its settings.")
         case .missingPassword: return AppLocalization.string("Enter a password for this device.")
+        case .invalidGatewayHost: return AppLocalization.string("Enter a gateway hostname or IP address, without a URL or port.")
+        case .invalidGatewayPort: return AppLocalization.string("Gateway port must be between 1 and 65535.")
         case .keychain(let status):
             return AppLocalization.string("Could not update this device's saved credential (\(status)). Try again.")
         }
