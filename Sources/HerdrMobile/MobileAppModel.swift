@@ -47,6 +47,7 @@ final class MobileDeviceSession {
             eventTask?.cancel()
             onChange?()
             await oldTransport?.close()
+            guard connectToken == token, !Task.isCancelled else { return }
             var openingTransport: MobileTransport?
             do {
                 let transport = try await connector(device)
@@ -85,11 +86,12 @@ final class MobileDeviceSession {
     }
 
     /// Invalidates before the next actor turn, including a connection still opening.
-    func cancelConnection() {
+    @discardableResult
+    func cancelConnection() -> Task<Void, Never> {
         let oldTransport = invalidateConnection()
         snapshot = nil
         onChange?()
-        Task { await oldTransport?.close() }
+        return Task { await oldTransport?.close() }
     }
 
     private func invalidateConnection() -> MobileTransport? {
@@ -281,6 +283,7 @@ final class MobileAppModel {
     private var sessions: [UUID: MobileDeviceSession] = [:]
     private var connectionTask: Task<Void, Never>?
     private var connectionTaskToken: UUID?
+    private var closingTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
     init(store: MobileDeviceStore? = nil, connector: @escaping MobileTransportConnector = { device in
         switch device.kind {
@@ -325,7 +328,12 @@ final class MobileAppModel {
         guard connectionTaskToken == nil else { return }
         let token = UUID()
         connectionTaskToken = token
+        // Tailcat transports share a bridge by device ID; an obsolete close
+        // must finish before the next transport can reuse that bridge.
+        let precedingClose = session.device.isTailcat ? closingTasks[session.device.id]?.task : nil
         connectionTask = Task {
+            await precedingClose?.value
+            guard !Task.isCancelled else { return }
             await session.connect()
             if connectionTaskToken == token {
                 connectionTaskToken = nil
@@ -335,10 +343,21 @@ final class MobileAppModel {
     }
 
     private func cancelSelectedConnection() {
+        guard let id = selectedDeviceID else { return }
+        let opening = connectionTask
         connectionTask?.cancel()
         connectionTask = nil
         connectionTaskToken = nil
-        selectedSession?.cancelConnection()
+        let closing = selectedSession?.cancelConnection()
+        let previousClose = closingTasks[id]?.task
+        let token = UUID()
+        let task = Task {
+            await previousClose?.value
+            await opening?.value
+            await closing?.value
+            if closingTasks[id]?.token == token { closingTasks.removeValue(forKey: id) }
+        }
+        closingTasks[id] = (token, task)
     }
 
     func selectDevice(_ id: UUID) {

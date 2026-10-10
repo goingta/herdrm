@@ -5,6 +5,27 @@ import HerdrSSH
 
 @MainActor
 final class DeviceManagementTests: XCTestCase {
+    func testRapidReturnToDeviceWaitsForItsSharedBridgeTeardown() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let first = MobileDevice(kind: .tailcat, name: "Bridge device")
+        let second = MobileDevice(name: "SSH device", host: "host.example", username: "alice")
+        store.save([first, second])
+        let bridge = SharedBridgeFixture()
+        let model = MobileAppModel(store: store, connector: { device in
+            if device.id == first.id { return await bridge.open() }
+            return FixtureTransport(label: "Other workspace")
+        })
+        model.connectSelected()
+        try await eventually { model.spaces.first?.label == "Bridge workspace" }
+        model.selectDevice(second.id)
+        model.selectDevice(first.id)
+        try await eventually { await bridge.wasClosed }
+        try await eventually { model.spaces.first?.label == "Bridge workspace" }
+        let refreshed = await model.selectedSession?.refresh()
+        XCTAssertEqual(refreshed, true, "Old bridge teardown must not kill the replacement connection")
+        await model.selectedSession?.disconnect()
+    }
+
     func testPreviousHostSnapshotCannotReplaceCurrentDeviceData() async throws {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let first = MobileDevice(name: "First", host: "first.example", username: "alice")
@@ -231,6 +252,46 @@ private actor FixtureTransport: MobileTransport {
 }
 
 private enum FixtureError: Error { case timeout }
+
+/// Simulates Tailcat's process-global resource reused by successive transports.
+private actor SharedBridgeFixture {
+    private var isAlive = false
+    private(set) var wasClosed = false
+
+    func open() -> MobileTransport {
+        isAlive = true
+        return SharedBridgeTransport(bridge: self)
+    }
+
+    func checkAvailable() throws {
+        guard isAlive else { throw FixtureError.timeout }
+    }
+
+    func close() async {
+        try? await Task.sleep(for: .milliseconds(100))
+        isAlive = false
+        wasClosed = true
+    }
+}
+
+private actor SharedBridgeTransport: MobileTransport {
+    let bridge: SharedBridgeFixture
+    let replies = FixtureTransport(label: "Bridge workspace")
+    init(bridge: SharedBridgeFixture) { self.bridge = bridge }
+
+    func request(method: String, params: JSONValue) async throws -> JSONValue {
+        try await bridge.checkAvailable()
+        return try await replies.request(method: method, params: params)
+    }
+
+    nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> {
+        AsyncThrowingStream { _ in }
+    }
+    func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
+        throw CancellationError()
+    }
+    func close() async { await bridge.close() }
+}
 
 private actor RemoteReplyGate {
     private var continuation: CheckedContinuation<Void, Never>?

@@ -1,6 +1,10 @@
 # 01 — 开发机配置与切换
 
-状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[iPhone] 01 — 开发机配置与切换](https://github.com/goingta/herdrm/issues/1)。
+状态：代码实现及自动验证完成，真机表单验收待完成。GitHub：[[iPhone] 01 — 开发机配置与切换](https://github.com/goingta/herdrm/issues/1)。
+
+2026-10-10 实施记录：正式分支 codex/iphone-device-profiles，从 main 建立；新增/编辑共用表单支持可选 socket、即时字段校验及保留原密码。编辑连接字段或切换设备即时作废旧结果，Tailcat 同设备重连等待旧共享桥接释放。删除有本地清理与远端撤销说明，不删除其他设备密码或共用手机身份。只改名称保留当前 Agent 与连接。
+
+验证：iPhone 17 / iOS 26.5 Simulator 上 `make mobile-test` 全部 8 项通过；涵盖旧 v1 密码配置兼容、无效编辑不落盘、编辑持久化与密码保留、删除隔离、名称变更保留上下文、旧连接和旧快照延迟返回、共享桥接快速 A → B → A 切换。自动测试在开发机管理公开接口运行，通过受控远端传输模拟延迟与共享资源；没有把这份记录视为物理 iPhone 的 UI 验收。审查详情：[审查与验证记录](../../reviews/iphone-device-profiles.md)。
 
 ## What to build
 

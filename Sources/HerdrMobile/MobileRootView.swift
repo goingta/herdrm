@@ -48,10 +48,10 @@ struct MobileRootView: View {
             }
         }
         .sheet(isPresented: $model.showAddDevice) {
-            AddDeviceSheet(model: model)
+            DeviceEditorSheet(model: model)
         }
         .sheet(item: $model.editingDevice) { device in
-            AddDeviceSheet(model: model, device: device)
+            DeviceEditorSheet(model: model, device: device)
         }
         .task {
             if model.selectedDeviceID != nil { model.connectSelected() }
@@ -354,7 +354,7 @@ private struct ConnectionDot: View {
     }
 }
 
-struct AddDeviceSheet: View {
+struct DeviceEditorSheet: View {
     @Bindable var model: MobileAppModel
     let device: MobileDevice?
     @Environment(\.dismiss) private var dismiss
@@ -386,16 +386,21 @@ struct AddDeviceSheet: View {
 
     private var validationError: String? {
         guard kind == .ssh else { return nil }
-        guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
-            return MobileDeviceError.invalidPort.localizedDescription
-        }
         do {
+            let parsed = try parsedSSHPort()
             _ = try MobileDevice(name: name, host: host, port: parsed, username: username).validated()
             if authMethod == .password, password.isEmpty, device?.authMethod != .password {
                 return MobileDeviceError.missingPassword.localizedDescription
             }
             return nil
         } catch { return error.localizedDescription }
+    }
+
+    private func parsedSSHPort() throws -> UInt16 {
+        guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
+            throw MobileDeviceError.invalidPort
+        }
+        return parsed
     }
 
     private var canAdd: Bool {
@@ -461,29 +466,23 @@ struct AddDeviceSheet: View {
                             if var edited = device {
                                 edited.name = name
                                 if kind == .ssh {
-                                    guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
-                                        throw MobileDeviceError.invalidPort
-                                    }
                                     edited.host = host
-                                    edited.port = parsed
+                                    edited.port = try parsedSSHPort()
                                     edited.username = username
                                     edited.authMethod = authMethod
                                     edited.socketPath = socketPath
                                 }
                                 try model.updateDevice(edited, password: password.isEmpty ? nil : password)
                             } else if kind == .ssh {
-                                guard let parsed = UInt16(port.trimmingCharacters(in: .whitespacesAndNewlines)), parsed > 0 else {
-                                    throw MobileDeviceError.invalidPort
-                                }
                                 try model.addDevice(
-                                name: name,
-                                host: host,
-                                port: parsed,
-                                username: username,
-                                authMethod: authMethod,
-                                password: password,
-                                socketPath: socketPath
-                            )
+                                    name: name,
+                                    host: host,
+                                    port: try parsedSSHPort(),
+                                    username: username,
+                                    authMethod: authMethod,
+                                    password: password,
+                                    socketPath: socketPath
+                                )
                             } else {
                                 model.addTailcatDevice(name: name, token: tailcatToken)
                             }

@@ -1,6 +1,6 @@
 # iPhone 远端开发：已发布任务索引
 
-2026-10-10。来源：[规格 v0.4](../../specs/iphone-remote-development.md)。用户已批准 18 项拆分、GitHub Issues 和默认标签；任务已发布到 goingta/herdrm，正文和标签已回读核对。已开始实施 #1。
+2026-10-10。来源：[规格 v0.4](../../specs/iphone-remote-development.md)。用户已批准 18 项拆分、GitHub Issues 和默认标签；任务已发布到 goingta/herdrm，正文和标签已回读核对。#1 代码与 8 项自动验证完成，真机表单验收待完成；下一项为 #2。
 
 ## 实施顺序
 
