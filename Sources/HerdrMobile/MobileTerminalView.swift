@@ -7,8 +7,7 @@ import UIKit
 
 /// The process-wide Ghostty app object for the phone's terminals: every
 /// surface shares one controller, mirroring the Mac app's GhosttyRuntime.
-/// The mobile chrome is dark-only, so the theme pins the dark palette to
-/// both schemes rather than following the OS appearance.
+/// Both clients resolve the same terminal palette against the App appearance.
 @MainActor
 enum MobileGhosttyRuntime {
     /// The font/cursor settings land as a configuration override (the
@@ -18,17 +17,6 @@ enum MobileGhosttyRuntime {
         controller.setTerminalConfiguration(makeConfiguration())
         return controller
     }()
-
-    /// Same dark colors as the Mac app (`TerminalDefaults`): #101012 on
-    /// #D6D6D6 with the Terminal.app 16-color palette.
-    private static let backgroundHex = "#101012"
-    private static let foregroundHex = "#D6D6D6"
-    private static let palette: [(red: Int, green: Int, blue: Int)] = [
-        (0, 0, 0), (194, 54, 33), (37, 188, 36), (173, 173, 39),
-        (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205),
-        (129, 131, 131), (252, 57, 31), (49, 231, 34), (234, 236, 35),
-        (88, 51, 255), (249, 53, 248), (20, 240, 240), (233, 235, 235),
-    ]
 
     /// Bundled Nerd Font symbols (MIT, github.com/ryanoasis/nerd-fonts),
     /// registered process-wide at app launch, for the icon glyphs agent
@@ -58,20 +46,8 @@ enum MobileGhosttyRuntime {
         }
     }
 
-    private static func makeTheme() -> TerminalTheme {
-        let dark = TerminalConfiguration { builder in
-            builder.withBackground(backgroundHex)
-            builder.withForeground(foregroundHex)
-            for (index, color) in palette.enumerated() {
-                builder.withPalette(index, color: hex(color))
-            }
-        }
-        return TerminalTheme(light: dark, dark: dark)
-    }
+    private static func makeTheme() -> TerminalTheme { TerminalPalette.makeTheme() }
 
-    private static func hex(_ color: (red: Int, green: Int, blue: Int)) -> String {
-        String(format: "#%02X%02X%02X", color.red, color.green, color.blue)
-    }
 }
 
 /// One live attach: a PTY channel running `herdr … attach` on the device,
@@ -111,6 +87,51 @@ final class MobileAttachSession: ObservableObject {
     /// Bytes before the bootstrap marker are shell rc chatter, not pane output.
     private var sawBootstrapMarker = false
     private var bootstrapBuffer = Data()
+    private var lightAdapter: LightTerminalANSIAdapter?
+    private var lightColorsEnabled: Bool?
+    private var appearanceGeneration = UUID()
+    private var appearanceRedrawTask: Task<Void, Never>?
+
+    /// Update the renderer and the next PTY bytes in place; never reattach SSH.
+    func setLightColorsEnabled(_ enabled: Bool) {
+        guard lightColorsEnabled != enabled else { return }
+        let wasConfigured = lightColorsEnabled != nil
+        lightColorsEnabled = enabled
+        lightAdapter = enabled ? LightTerminalANSIAdapter() : nil
+        let generation = UUID()
+        appearanceGeneration = generation
+        // An unchanged grid does not reliably generate SIGWINCH on Linux.
+        // Briefly change the PTY grid, then restore the latest actual viewport;
+        // this asks the TUI to repaint explicit RGB cells without reattaching.
+        if wasConfigured, let channel, let grid = lastGrid {
+            let previous = appearanceRedrawTask
+            appearanceRedrawTask = Task { [weak self] in
+                await previous?.value
+                guard let self, !Task.isCancelled,
+                      self.appearanceGeneration == generation,
+                      self.channel === channel else { return }
+                do {
+                    try await channel.resize(columns: grid.columns, rows: max(1, grid.rows - 1), timeout: .seconds(5))
+                    // Always restore a changed grid before the next theme's
+                    // redraw; a stopped/replaced attach must never be resized.
+                    guard self.channel === channel else { return }
+                    let current = self.lastGrid ?? grid
+                    try await channel.resize(columns: current.columns, rows: current.rows, timeout: .seconds(5))
+                } catch {}
+            }
+        }
+    }
+
+    private func render(_ data: Data) {
+        if var adapter = lightAdapter {
+            let bytes = [UInt8](data)
+            let transformed = adapter.transform(bytes[...])
+            lightAdapter = adapter
+            if !transformed.isEmpty { terminal.receive(Data(transformed)) }
+        } else {
+            terminal.receive(data)
+        }
+    }
 
     /// The herdr pane behind this attach, for key/prompt RPCs.
     let paneID: String
@@ -208,7 +229,7 @@ final class MobileAttachSession: ObservableObject {
 
     private func ingest(_ data: Data) {
         guard !sawBootstrapMarker else {
-            terminal.receive(data)
+            render(data)
             return
         }
         bootstrapBuffer.append(data)
@@ -217,7 +238,7 @@ final class MobileAttachSession: ObservableObject {
             // binary, exec failure output) still shows its error text.
             if bootstrapBuffer.count > 8192 {
                 sawBootstrapMarker = true
-                terminal.receive(bootstrapBuffer)
+                render(bootstrapBuffer)
                 bootstrapBuffer.removeAll()
             }
             return
@@ -225,7 +246,7 @@ final class MobileAttachSession: ObservableObject {
         sawBootstrapMarker = true
         let payload = bootstrapBuffer.suffix(from: range.upperBound)
         bootstrapBuffer.removeAll()
-        if !payload.isEmpty { terminal.receive(Data(payload)) }
+        if !payload.isEmpty { render(Data(payload)) }
     }
 
     /// Sends named keys through herdr's RPC — proper terminal encoding without
@@ -257,6 +278,9 @@ final class MobileAttachSession: ObservableObject {
     }
 
     func stop() {
+        appearanceGeneration = UUID()
+        appearanceRedrawTask?.cancel()
+        appearanceRedrawTask = nil
         readTask?.cancel()
         readTask = nil
         openTask?.cancel()
@@ -305,6 +329,7 @@ struct MobileTerminalScreen: View {
     @StateObject private var session: MobileAttachSession
     @State private var composerText = ""
     @State private var keyboardShown = false
+    @Environment(\.colorScheme) private var colorScheme
     private let title: String
 
     init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String) {
@@ -327,13 +352,13 @@ struct MobileTerminalScreen: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbarBackground(terminalBackground, for: .navigationBar)
         .onDisappear { session.stop() }
     }
 
     private var terminalBackground: SwiftUI.Color {
-        SwiftUI.Color(red: 0x10 / 255, green: 0x10 / 255, blue: 0x12 / 255)
+        Theme.terminalBackground
     }
 
     private var controls: some View {
@@ -346,7 +371,7 @@ struct MobileTerminalScreen: View {
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 6)
-        .background(.black.opacity(0.35))
+        .background(Theme.statusBarBackground)
     }
 
     private var keyBar: some View {
@@ -362,9 +387,9 @@ struct MobileTerminalScreen: View {
                 keyboardShown.toggle()
             } label: {
                 Image(systemName: keyboardShown ? "keyboard.chevron.compact.down" : "keyboard")
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Theme.textSecondary)
                     .frame(width: 34, height: 30)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
             }
             .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
         }
@@ -381,9 +406,9 @@ struct MobileTerminalScreen: View {
             .textFieldStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-            .foregroundStyle(.white)
-            .tint(.white)
+            .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(Theme.text)
+            .tint(Theme.accent)
             .onSubmit(sendPrompt)
 
             Button(action: sendPrompt) {
@@ -391,7 +416,7 @@ struct MobileTerminalScreen: View {
                     .font(.system(size: 28))
                     .foregroundStyle(
                         composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? SwiftUI.Color.white.opacity(0.25) : SwiftUI.Color.accentColor
+                            ? Theme.textGhost : Theme.accent
                     )
             }
             .disabled(composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -410,7 +435,7 @@ struct MobileTerminalScreen: View {
         VStack(spacing: 12) {
             Text(reason)
                 .font(.callout)
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Theme.textSecondary)
             Button(AppLocalization.string("Reconnect")) {
                 session.stop()
                 session.start()
@@ -418,7 +443,7 @@ struct MobileTerminalScreen: View {
             .buttonStyle(.borderedProminent)
         }
         .padding(24)
-        .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.contentBackground.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -439,9 +464,13 @@ private final class MobileGhosttyTerminalView: UITerminalView {
 private struct MobileTerminalHost: UIViewRepresentable {
     let session: MobileAttachSession
     @Binding var keyboardShown: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     func makeUIView(context: Context) -> MobileGhosttyTerminalView {
         let view = MobileGhosttyTerminalView(frame: .zero)
+        view.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+        session.setLightColorsEnabled(colorScheme == .light)
+        MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
         view.controller = MobileGhosttyRuntime.controller
         view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
         context.coordinator.observeKeyboard(for: view)
@@ -450,6 +479,9 @@ private struct MobileTerminalHost: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: MobileGhosttyTerminalView, context _: Context) {
+        uiView.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
+        MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
+        session.setLightColorsEnabled(colorScheme == .light)
         if keyboardShown {
             uiView.acquireProgrammaticFocus()
         } else if uiView.isFirstResponder {
@@ -512,11 +544,11 @@ private struct KeyChip: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Theme.textSecondary)
                 .frame(minWidth: 34)
                 .frame(height: 30)
                 .padding(.horizontal, 4)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
         }
         .accessibilityLabel(accessibilityLabel)
     }
