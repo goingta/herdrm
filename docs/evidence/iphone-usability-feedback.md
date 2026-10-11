@@ -12,7 +12,7 @@
 ## 红绿与验证边界
 
 - 首次聊天外点回归：`/private/tmp/herdr-usability-keyboard-red.log`，键盘仍存在；修正后真实 tap/type/外点/草稿与工作记录展开通过。
-- 首次字号回归：`/private/tmp/herdr-usability-type-red.log`，标题高度 20.333pt 超出移动 16pt 标题基准；修正后默认/放大文字、长中文名称、44pt 控件通过。
+- 首次字号回归：`/private/tmp/herdr-usability-type-red.log`，标题 glyph bounds 高度 20.333pt（不是字体 point size）超出移动 16pt 标题的默认 glyph 高度 gate；修正后默认/放大文字、长中文名称、44pt 控件通过。
 - Git 公共 model seam 最终 8 项通过：`/private/tmp/herdr-usability-branch-final.log`，结果包 `Test-HerdrMobile-2026.10.11_20-36-04-+0800.xcresult`。包括非仓库、checkout path、换开发机和同连接 cwd 变化的延迟返回隔离。
 - 共享模型兼容 `swift test --filter TabReorderTests` 7 项通过，`/private/tmp/herdr-usability-kit.log`。
 - Mac build 通过：`/private/tmp/herdr-usability-mac-build.log`；Mac UI 源码无更改。正式 Info.plist、project.yml、ATS、密钥账户和签名配置无更改，模拟器命令仅覆盖临时签名参数。
@@ -23,3 +23,13 @@
 最终 batch 原始截图已逐张检查：[真实分支](iphone-usability-feedback/sidebar-real-branch.png)、[默认字号](iphone-usability-feedback/mobile-reading-scale.png)、[放大字号](iphone-usability-feedback/dynamic-type-reading-scale.png)。390×844pt、3×，iPhone 13 Simulator / iOS 26.5。
 
 UI fixture 的 SSH attach 为受控不可用，渲染/键盘是实际生产控件及系统键盘；以上不能证明真实 PTY 或远端业务写入。一次草稿测试误把重新点击后的 caret 位置当作末尾，已改为验证实际编辑字符串在外点后原样保持，未归为产品故障。失败批次不作为最终 green 结果，重叠批次不相加。
+
+## 终端恢复提示与键盘焦点的补充诊断
+
+新的实际 UI 测试打开 Ghostty 软件键盘后直接点击 composer，曾报没有 keyboard focus。最初失败 snapshot 的 composer y663.7 被误推断为未避让键盘；打开键盘时的原始截图与 AX frame 证明实际 composer y329.7、max349.7，在键盘 y553 之上。真正遮挡是 SSH attach 失败的 Reconnect 提示居中覆盖整个终端及 controls；点击它作为外点收键盘后 frame 才回到 y663.7。`ignoresSafeArea(.container)` 单变量无效，已撤回，不添加裸 keyboard height 或焦点抢占补丁。
+
+修正将恢复提示限制在 terminal display，并裁剪/限定命中区域，始终保留输入 controls 可操作。`/private/tmp/herdr-usability-ghostty-inset-red.log` 与 geometry 诊断为 red；`/private/tmp/herdr-usability-ghostty-recovery-overlay-green.log` 为真实标准按钮 tap→Ghostty 键盘→composer tap/type→外点收回→草稿及原位置恢复的 green，结果包 `Test-HerdrNavigationAcceptance-2026.10.11_20-56-42-+0800.xcresult`。
+
+横屏实际 composer 输入、返回竖屏后的 Ctrl 原动作/外点收回、前台恢复及原位置无残留通过：`/private/tmp/herdr-usability-landscape-roundtrip-green.log`，结果包 `Test-HerdrNavigationAcceptance-2026.10.11_21-00-50-+0800.xcresult`。边界：旋转可能关闭 Ghostty 键盘，测试采用先横屏再打开；横屏软件键盘下，既有 chrome 最小高度会使顶栏及部分快捷键暂时不可达。本轮没有改动竖向 chrome，也不声称该状态所有控件可达。无需新键盘 inset；因此原生输入框已有避让不被重复 padding。
+
+**最终同源码实际 UI batch：10 项、0 failures、112.168s**。`/private/tmp/herdr-usability-ui-complete-final.log`，结果包 `/private/tmp/herdr-usability-dd/Logs/Test/Test-HerdrNavigationAcceptance-2026.10.11_21-01-43-+0800.xcresult`。其中 VisualAcceptanceTests 8 个新反馈/诊断回归，SpaceNavigationTests 2 个长名称和快捷键回归。该批替代早先不完整或失败的同类 UI batch；不与其相加。共享模型 8 项和 Mac build 的最终源码保持不变，采用上文独立结果；真机仍待主代理安装和用户验收。

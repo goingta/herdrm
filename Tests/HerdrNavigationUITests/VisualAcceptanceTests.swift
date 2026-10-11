@@ -105,6 +105,59 @@ final class VisualAcceptanceTests: XCTestCase {
     }
 
     @MainActor
+    func testGhosttyKeyboardKeepsComposerAboveKeyboardAndAllowsDirectFocusTransfer() {
+        continueAfterFailure = false
+        let app = launch(language: "en", theme: "dark")
+        app.buttons["workspace.mode.terminal"].tap()
+        let composer = app.textFields["agent.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let originalFrame = composer.frame
+        app.buttons["agent.keyboard"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let geometry = XCTAttachment(string: "Composer \(composer.frame), keyboard \(app.keyboards.firstMatch.frame), keyboard hittable \(app.keyboards.firstMatch.isHittable)")
+        geometry.lifetime = .keepAlways; add(geometry)
+        keep(app, "iphone-usability-ghostty-keyboard-before-focus-transfer")
+        XCTAssertLessThanOrEqual(composer.frame.maxY, app.keyboards.firstMatch.frame.minY,
+            "Composer \(composer.frame) overlaps keyboard \(app.keyboards.firstMatch.frame)")
+        composer.tap(); composer.typeText("Direct focus transfer preserves this draft")
+        XCTAssertEqual(composer.value as? String, "Direct focus transfer preserves this draft")
+        app.staticTexts["workspace.session.title"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(composer.value as? String, "Direct focus transfer preserves this draft")
+        XCTAssertEqual(composer.frame.minY, originalFrame.minY, accuracy: 1)
+        keep(app, "iphone-usability-ghostty-keyboard-focus-transfer")
+    }
+
+    @MainActor
+    func testTerminalComposerAvoidanceRestoresAfterLandscapeKeyboardAndForegroundReturn() {
+        continueAfterFailure = false
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(language: "en", theme: "dark")
+        app.buttons["workspace.mode.terminal"].tap()
+        let composer = app.textFields["agent.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let portraitY = composer.frame.minY
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.buttons["agent.keyboard"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertLessThanOrEqual(composer.frame.maxY, app.keyboards.firstMatch.frame.minY)
+        composer.tap(); composer.typeText("Landscape draft")
+        XCTAssertEqual(composer.value as? String, "Landscape draft")
+        XCTAssertLessThanOrEqual(composer.frame.maxY, app.keyboards.firstMatch.frame.minY)
+        keep(app, "iphone-usability-landscape-keyboard")
+        XCUIDevice.shared.orientation = .portrait
+        app.buttons["terminal.modifier.ctrl"].tap()
+        XCTAssertTrue(app.buttons["terminal.modifier.ctrl"].isSelected)
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(composer.frame.minY, portraitY, accuracy: 1)
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertEqual(composer.value as? String, "Landscape draft")
+        XCTAssertEqual(composer.frame.minY, portraitY, accuracy: 1)
+    }
+
+    @MainActor
     func testInactiveAgentKeyboardObserverLeavesPreviewWebInputsEditable() throws {
         continueAfterFailure = false
         let server = try PreviewHTTPFixture()

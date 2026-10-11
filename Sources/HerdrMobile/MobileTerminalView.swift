@@ -539,13 +539,16 @@ struct MobileTerminalScreen: View {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
+                    .overlay {
+                        if transportReady, case .ended(let reason) = session.status { endedOverlay(reason) }
+                    }
+                    // Recovery belongs to the display: the keyboard can shrink
+                    // it, but the overlay must never cover the input controls.
+                    .clipped().contentShape(Rectangle())
                 if agentTabVisible {
                     if session.refreshFailed { Text(AppLocalization.string("Could Not Refresh Terminal")).font(.caption).foregroundStyle(MobileReferenceTheme.dim).padding(6) }
                     controls.disabled(!transportReady)
                 }
-            }
-            if transportReady, case .ended(let reason) = session.status {
-                endedOverlay(reason)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
