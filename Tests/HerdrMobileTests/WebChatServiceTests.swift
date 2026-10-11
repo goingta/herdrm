@@ -35,6 +35,72 @@ final class WebChatServiceTests: XCTestCase {
         XCTAssertEqual(result.conversation.turns.first?.parts.last, .unknown(kind: "future-part", description: "Readable future content"))
     }
 
+    func testCredentialIsScopedToProfileServiceAndBindingGeneration() throws {
+        let first = try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local")
+        let second = try WebChatConfiguration(serviceURL: "https://other.example/", machineID: "local", credentialID: first.credentialID)
+        let deviceID = UUID()
+        defer { try? WebChatSecretStore.removeCredential(for: first, nativeDeviceID: deviceID) }
+        try WebChatSecretStore.setCredential(.token("fixture-keychain-only"), for: first, nativeDeviceID: deviceID)
+        XCTAssertEqual(WebChatSecretStore.credential(for: first, nativeDeviceID: deviceID), .token("fixture-keychain-only"))
+        XCTAssertNil(WebChatSecretStore.credential(for: first, nativeDeviceID: UUID()))
+        XCTAssertNil(WebChatSecretStore.credential(for: second, nativeDeviceID: deviceID))
+        XCTAssertNil(WebChatSecretStore.credential(for: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), nativeDeviceID: deviceID))
+    }
+
+    func testUploadChecksBindingAndReturnsOnlyConfirmedRemotePath() async throws {
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/api/pane/image")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Herdr-Machine"), "1")
+            return (200, [:], Data("{\"ok\":true,\"path\":\"/workspace/.herdr-web-ui/notes.txt\"}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        let uploaded = try await service.upload(for: Self.target, data: Data("safe fixture".utf8), contentType: "text/plain", name: "notes.txt")
+        XCTAssertEqual(uploaded.path, "/workspace/.herdr-web-ui/notes.txt")
+        do {
+            _ = try await service.upload(for: Self.target, data: Data(repeating: 0, count: 8 * 1024 * 1024 + 1), contentType: "text/plain", name: "large.txt")
+            XCTFail("Oversized attachment must not upload")
+        } catch { XCTAssertEqual(error as? WebChatError, .attachmentTooLarge) }
+    }
+
+    func testPairingAcceptsOnlyTheDedicatedServiceCookie() async throws {
+        let session = fixtureSession { request in
+            XCTAssertEqual(request.url?.path, "/api/devices/pair")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
+            return (204, ["Set-Cookie": "herdr_web_device=fixture-paired; Path=/; HttpOnly; Secure; SameSite=Strict"], Data())
+        }
+        let binding = try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local")
+        let credential = try await WebChatService.pairedCredential(configuration: binding, code: "123456", label: "Fixture iPhone", session: session)
+        XCTAssertEqual(credential, .pairedDevice("fixture-paired"))
+    }
+
+    func testImageAndToolOutputStayInsideValidatedCurrentHistory() async throws {
+        let session = fixtureSession { request in
+            switch request.url?.path {
+            case "/api/machines": return (200, [:], Self.machineJSON)
+            case "/api/pane/conversation": return (200, [:], Data("""
+            {"source":"claude-transcript","history_id":"history-a","turns":[{"role":"assistant","ts":null,"parts":[{"kind":"image","media_type":"image/png","ref":"image-a"},{"kind":"tool","name":"Read","summary":"Read fixture","input":"","output":"short","output_ref":"tool-a"}]}]}
+            """.utf8))
+            case "/api/pane/conversation/image": return (200, ["Content-Type":"image/png"], Data([137,80,78,71]))
+            case "/api/pane/conversation/tool-output": return (200, ["Content-Type":"text/plain"], Data("complete fixture output".utf8))
+            default: throw WebChatError.invalidResponse
+            }
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        let image = try await service.image(for: Self.target, ref: "image-a", historyID: "history-a")
+        XCTAssertEqual(image.contentType, "image/png")
+        XCTAssertEqual(image.data, Data([137,80,78,71]))
+        let output = try await service.toolOutput(for: Self.target, ref: "tool-a", historyID: "history-a")
+        XCTAssertEqual(output, "complete fixture output")
+        do {
+            _ = try await service.image(for: Self.target, ref: "image-a", historyID: "replaced-history")
+            XCTFail("A stale history reference must be rejected")
+        } catch { XCTAssertEqual(error as? WebChatError, .historyChanged) }
+    }
+
     private static let target = WebChatTarget(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space-a", tabID: "tab-a", paneID: "pane-a")
     private static let machineJSON = Data("""
     {"machines":[{"id":"local","name":"Fixture Linux","kind":"local","enabled":true,"state":"connected","error":null,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space-a"}],"tabs":[{"tab_id":"tab-a","workspace_id":"space-a"}],"panes":[{"pane_id":"pane-a","tab_id":"tab-a","workspace_id":"space-a"}]}}]}
