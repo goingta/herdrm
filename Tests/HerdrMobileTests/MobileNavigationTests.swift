@@ -53,11 +53,33 @@ final class MobileNavigationTests: XCTestCase {
         await model.selectedSession?.disconnect()
     }
 
+    func testChatBindingEditKeepsNativeSSHAndPaneWhileHostEditRotatesItsCredentialScope() async throws {
+        let (model, _) = fixture()
+        model.connectSelected()
+        try await wait { model.selectedTransportReady }
+        let session = try XCTUnwrap(model.selectedSession)
+        let pane = model.selectedAgentPaneID
+        let configuration = try WebChatConfiguration(serviceURL: "https://fixture.example/", machineID: "local")
+        try model.saveChatConfiguration(configuration, for: try XCTUnwrap(model.selectedDeviceID))
+        XCTAssertTrue(model.selectedSession === session)
+        XCTAssertEqual(model.selectedAgentPaneID, pane)
+        XCTAssertTrue(model.selectedTransportReady)
+        var device = try XCTUnwrap(model.selectedDevice)
+        device.name = "Display rename"
+        try model.updateDevice(device)
+        XCTAssertEqual(model.selectedDevice?.chatConfiguration, configuration)
+        device.host = "another.example"
+        try model.updateDevice(device)
+        XCTAssertNotEqual(model.selectedDevice?.chatConfiguration?.credentialID, configuration.credentialID)
+        XCTAssertEqual(model.selectedDevice?.chatConfiguration?.serviceURL, configuration.serviceURL)
+        await model.selectedSession?.disconnect()
+    }
+
     private func fixture() -> (MobileAppModel, NavigationFixture) {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         store.save([MobileDevice(name: "远端开发机 · 长名称用于验证管理按钮仍可点击", host: "fixture.example", username: "developer")])
         let transport = NavigationFixture()
-        return (MobileAppModel(store: store, connector: { _ in transport }), transport)
+        return (MobileAppModel(store: store, chatCredentialRemover: { _, _ in }, connector: { _ in transport }), transport)
     }
 
     private func wait(_ condition: () -> Bool) async throws {

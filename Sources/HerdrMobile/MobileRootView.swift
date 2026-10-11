@@ -5,38 +5,46 @@ import SwiftUI
 /// server tabs and a split-pane picker choose one existing terminal at a time.
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
+    var openChatURL: (URL) -> Void = { _ in }
+    @State private var chatDevice: MobileDevice?
     @State private var drawerShown = false
     @State private var restorationHintVisible = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .leading) {
-                VStack(spacing: 0) {
-                    topBar
-                    workspaceHeader
-                    if !model.workspaceTabs.isEmpty { tabStrip }
-                    terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(alignment: .top) {
-                            if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
-                                restorationBanner
+            VStack(spacing: 0) {
+                topBar
+                ZStack(alignment: .leading) {
+                    VStack(spacing: 0) {
+                        if !model.workspaceTabs.isEmpty { tabStrip }
+                        terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .overlay(alignment: .top) {
+                                if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
+                                    restorationBanner
+                                }
                             }
-                        }
-                }
-                .background(Theme.contentBackground)
-                .accessibilityHidden(drawerShown)
-                if drawerShown {
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Button { drawerShown = false } label: { Color.black.opacity(0.28) }
-                                .buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Close Sidebar"))
-                                .accessibilityIdentifier("spaces.drawer.close")
-                            drawer.frame(width: min(340, proxy.size.width * 0.86))
+                    }
+                    .background(Theme.contentBackground)
+                    .accessibilityHidden(drawerShown)
+                    if drawerShown {
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Button { drawerShown = false } label: { Color.black.opacity(0.28) }
+                                    .buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Close Sidebar"))
+                                    .accessibilityIdentifier("spaces.drawer.close")
+                                drawer.frame(width: min(340, proxy.size.width * 0.86))
+                            }
                         }
                     }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+        }
+        .sheet(item: $chatDevice) { device in
+            WebChatSettingsView(device: device) { configuration in
+                try model.saveChatConfiguration(configuration, for: device.id)
+            }
         }
         .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
         .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
@@ -55,54 +63,77 @@ struct MobileRootView: View {
     // A native custom bar preserves a real 44pt button boundary even on
     // system versions whose navigation-bar glass controls report 36pt frames.
     private var topBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Button { drawerShown.toggle() } label: {
-                Image(systemName: "sidebar.left").font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
+                Image(systemName: "sidebar.left").font(.system(size: 20))
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
             .accessibilityLabel(AppLocalization.string("Spaces"))
             .accessibilityIdentifier("spaces.drawer")
-            DeviceSwitcherMenu(model: model).buttonStyle(.plain)
-            Spacer(minLength: 4)
-            Text("herdrm").font(.headline).foregroundStyle(Theme.text)
-            Spacer(minLength: 4)
-            Button { model.showAddDevice = true } label: {
-                Image(systemName: "plus").font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
+            HStack(spacing: 7) {
+                if let kind = model.selectedAgent?.agent,
+                   let resource = BrandIconLoader.agentIcon(for: kind) { BrandIcon(resource: resource, size: 22) }
+                Text(model.selectedPaneTitle ?? "herdrm")
+                    .font(.system(.headline, design: .default).weight(.semibold))
+                    .lineLimit(1).truncationMode(.tail)
+                    .accessibilityIdentifier("workspace.session.title")
             }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .accessibilityLabel(AppLocalization.string("Add Device"))
-            .accessibilityIdentifier("device.add")
+            .foregroundStyle(MobileReferenceTheme.strong)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 0) {
+                modeButton(.chat, symbol: "bubble", title: "Chat")
+                modeButton(.terminal, symbol: "terminal", title: "Terminal")
+            }
+            .padding(3)
+            .background(MobileReferenceTheme.elevated, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(MobileReferenceTheme.border))
+            Menu {
+                Text(model.selectedPaneTitle ?? "herdrm")
+                if let device = model.selectedDevice {
+                    Text(device.name)
+                    if let space = model.selectedSpace { Text(space.label) }
+                    Button(AppLocalization.string("Chat Service")) { chatDevice = device }
+                    if model.paneMode == .chat, let target = model.currentPromptTarget {
+                        Button(AppLocalization.string("Refresh")) { model.chatController(for: target)?.refresh() }
+                    }
+                    Text(connectionLabel)
+                    Button(AppLocalization.string("Edit Device")) { model.editingDevice = device }
+                }
+                Button(AppLocalization.string("Reconnect")) { model.resumeSelected() }
+                Button(AppLocalization.string("Add Device")) { model.showAddDevice = true }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 20))
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityLabel(AppLocalization.string("More"))
+            .accessibilityIdentifier("workspace.more")
         }
-        .foregroundStyle(Theme.accent)
-        .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(Theme.statusBarBackground)
+        .foregroundStyle(MobileReferenceTheme.dim)
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(MobileReferenceTheme.panel)
+        .overlay(alignment: .bottom) { Rectangle().fill(MobileReferenceTheme.border).frame(height: 1) }
     }
 
-    private var workspaceHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(model.selectedSpace?.label ?? model.selectedDevice?.name ?? "herdrm")
-                .font(.headline).foregroundStyle(Theme.text)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("workspace.title")
-            if let device = model.selectedDevice {
-                Text(device.name).font(.caption).foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private func modeButton(_ mode: MobilePaneMode, symbol: String, title: String) -> some View {
+        Button { model.selectMode(mode) } label: {
+            Image(systemName: symbol).font(.system(size: 19))
+                .foregroundStyle(model.paneMode == mode ? MobileReferenceTheme.accent : MobileReferenceTheme.dim)
+                .frame(width: 44, height: 44)
+                .background(model.paneMode == mode ? MobileReferenceTheme.input : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(Theme.statusBarBackground)
+        .buttonStyle(.plain)
+        .disabled(mode == .chat && model.selectedAgent == nil)
+        .accessibilityIdentifier("workspace.mode.\(mode.rawValue)")
+        .accessibilityLabel(mode == .chat ? AppLocalization.string("Chat") : AppLocalization.string("Terminal"))
+        .accessibilityAddTraits(model.paneMode == mode ? [.isSelected] : [])
     }
 
     private var drawer: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("herdrm").font(.headline)
                     DeviceSwitcherMenu(model: model).buttonStyle(.plain)
                     Spacer()
                     Button { drawerShown = false } label: {
@@ -130,7 +161,7 @@ struct MobileRootView: View {
                         drawerShown = false
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "folder").foregroundStyle(Theme.accent)
+                            Image(systemName: "folder").foregroundStyle(MobileReferenceTheme.dim)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(space.label).font(.body).foregroundStyle(Theme.text)
                                 Text("#\(space.number)").font(.caption).foregroundStyle(Theme.textSecondary)
@@ -159,55 +190,42 @@ struct MobileRootView: View {
     }
 
     private var tabStrip: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-              ScrollView(.horizontal) {
-                HStack(spacing: 6) {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 4) {
                     ForEach(model.workspaceTabs) { tab in
-                        Button { model.selectTab(tab.id) } label: {
-                            HStack(spacing: 6) {
-                                if let kind = model.paneChoices(in: tab.id).compactMap(\.agent).first?.agent,
-                                   let resource = BrandIconLoader.agentIcon(for: kind) {
-                                    BrandIcon(resource: resource, size: 18)
-                                } else {
-                                    Image(systemName: "terminal")
+                        HStack(spacing: 0) {
+                            Button { model.selectTab(tab.id) } label: {
+                                HStack(spacing: 7) {
+                                    SpaceAttentionGlyph(attention: model.tabAttention(for: tab.id))
+                                    Text(tab.label).font(.subheadline.weight(.medium)).lineLimit(1)
                                 }
-                                SpaceAttentionGlyph(attention: model.tabAttention(for: tab.id))
-                                Text(tab.label).font(.subheadline.weight(model.selectedTabID == tab.id ? .semibold : .regular))
-                                    .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 12).frame(minHeight: 44)
                             }
-                            .foregroundStyle(model.selectedTabID == tab.id ? Theme.accent : Theme.textSecondary)
-                            .padding(.horizontal, 12).frame(minHeight: 44)
-                            .background(model.selectedTabID == tab.id ? Theme.accentWash : .clear,
-                                        in: RoundedRectangle(cornerRadius: VisualMetrics.controlRadius))
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("workspace.tab.\(tab.id)")
+                            .accessibilityAddTraits(model.selectedTabID == tab.id ? [.isSelected] : [])
+                            if model.selectedTabID == tab.id { panePicker(tabID: tab.id) }
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(model.selectedTabID == tab.id ? MobileReferenceTheme.strong : MobileReferenceTheme.dim)
+                        .padding(.vertical, 4)
+                        .overlay(alignment: .bottom) {
+                            if model.selectedTabID == tab.id { Rectangle().fill(MobileReferenceTheme.accent).frame(height: 2) }
+                        }
                         .id(tab.id)
-                        .accessibilityIdentifier("workspace.tab.\(tab.id)")
-                        .accessibilityValue(model.paneChoices(in: tab.id).compactMap(\.agent).map {
-                            agentStatusDescription($0.status, unread: model.isUnread($0))
-                        }.joined(separator: ", "))
-                        .accessibilityAddTraits(model.selectedTabID == tab.id ? [.isSelected] : [])
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 4)
+                .padding(.horizontal, 12)
             }
-              .scrollIndicators(.hidden)
-              .task(id: "\(model.selectedSpaceID ?? "")/\(model.selectedTabID ?? "")/\(model.workspaceTabs.map(\.id).joined(separator: ","))") {
-                  // Wait for the selected remote Tab's layout after snapshots,
-                  // restoration, or a remembered Space selection changes.
-                  await Task.yield()
-                  guard !Task.isCancelled, let selected = model.selectedTabID else { return }
-                  proxy.scrollTo(selected, anchor: .center)
-              }
+            .scrollIndicators(.hidden)
+            .task(id: "\(model.selectedSpaceID ?? "")/\(model.selectedTabID ?? "")/\(model.workspaceTabs.map(\.id).joined(separator: ","))") {
+                await Task.yield()
+                guard !Task.isCancelled, let selected = model.selectedTabID else { return }
+                proxy.scrollTo(selected, anchor: .center)
             }
-            if let tabID = model.selectedTabID, !model.paneChoices(in: tabID).isEmpty,
-               model.paneChoices(in: tabID).count > 1 || model.selectedTargetUnavailable {
-                panePicker(tabID: tabID)
-            }
-            Divider().overlay(Theme.hairline)
         }
-        .background(Theme.statusBarBackground)
+        .background(MobileReferenceTheme.panel)
+        .overlay(alignment: .bottom) { Rectangle().fill(MobileReferenceTheme.border).frame(height: 1) }
     }
 
     private func panePicker(tabID: String) -> some View {
@@ -221,15 +239,8 @@ struct MobileRootView: View {
                 .accessibilityAddTraits(pane.id == model.selectedAgentPaneID ? [.isSelected] : [])
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "rectangle.split.2x1")
-                Text(model.selectedPaneTitle ?? AppLocalization.string("Terminal"))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.down")
-            }
-            .font(.caption).foregroundStyle(Theme.textSecondary)
-            .padding(.horizontal, 14).frame(minHeight: 44)
+            Image(systemName: "chevron.down").font(.system(size: 13))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .accessibilityLabel(AppLocalization.string("Switch Pane"))
         .accessibilityIdentifier("workspace.panes")
@@ -253,12 +264,11 @@ struct MobileRootView: View {
         } else if model.selectedDevice?.isTailcat == true, model.selectedAgentPaneID != nil {
             stateView("No Terminal over Tailcat", detail: AppLocalization.string("This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."), symbol: "terminal")
         } else if let agent = model.selectedAgent, let transport = model.selectedSession?.transport {
-            MobileTerminalScreen(transport: transport, target: .agent(paneID: agent.paneID), paneID: agent.paneID,
-                title: agent.title(tabLabel: model.tabLabel(for: agent)), composerDraft: composerDraft(paneID: agent.paneID),
-                readState: model.agentReadState,
-                unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
-                onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady)
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(agent.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
+            if let target = model.currentPromptTarget {
+                MobilePaneWorkspace(model: model, target: target, transport: transport, agent: agent,
+                    configureChat: { chatDevice = model.selectedDevice }, openURL: openChatURL)
+                    .id(MobilePaneContext(target))
+            }
         } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
             MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady)
                 .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
@@ -311,15 +321,15 @@ struct MobileRootView: View {
         switch model.selectedConnectionState {
         case .idle: AppLocalization.string("Disconnected")
         case .connecting: AppLocalization.string("Connecting…")
-        case .connected: AppLocalization.string("Connected")
+        case .connected: model.selectedTransportReady ? AppLocalization.string("Connected") : AppLocalization.string("Restoring Terminal…")
         case .failed: AppLocalization.string("Connection Failed")
         }
     }
     private var connectionSymbol: String {
-        switch model.selectedConnectionState { case .connected: "checkmark.circle"; case .failed: "exclamationmark.circle"; default: "arrow.triangle.2.circlepath" }
+        switch model.selectedConnectionState { case .connected: model.selectedTransportReady ? "checkmark.circle" : "arrow.triangle.2.circlepath"; case .failed: "exclamationmark.circle"; default: "arrow.triangle.2.circlepath" }
     }
     private var connectionColor: Color {
-        switch model.selectedConnectionState { case .connected: Theme.success; case .failed: Theme.danger; default: Theme.textSecondary }
+        switch model.selectedConnectionState { case .connected: model.selectedTransportReady ? Theme.success : Theme.textSecondary; case .failed: Theme.danger; default: Theme.textSecondary }
     }
     private func composerDraft(paneID: String) -> Binding<String> {
         guard let deviceID = model.selectedDeviceID else { return .constant("") }

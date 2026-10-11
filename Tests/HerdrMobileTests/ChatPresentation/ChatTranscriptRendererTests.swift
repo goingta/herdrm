@@ -1,0 +1,108 @@
+import XCTest
+import UIKit
+import WebKit
+@testable import HerdrMobile
+
+@MainActor
+final class ChatTranscriptRendererTests: XCTestCase {
+    func testLatestReplyProofWaitsForLastFinalPartInViewport() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        renderer.setVisible(true)
+        var document = ChatRenderDocument(targetKey: "same-pane", historyID: "history", revision: "cached", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [
+                .init(kind: "text", text: Array(repeating: "Earlier content filling the viewport.", count: 100).joined(separator: "\n\n")),
+                .init(kind: "text", text: "Latest final result")
+            ])
+        ])
+        document.readinessAllowed = false
+        renderer.present(document)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Latest final result") == true }
+        _ = try await renderer.webView.evaluateJavaScript("document.getElementById('chat').scrollTop=0")
+        let notVisible = expectation(description: "Earlier text does not prove latest result")
+        notVisible.isInverted = true
+        renderer.onPresented = { _ in notVisible.fulfill() }
+        document.revision = "fresh"
+        document.readinessAllowed = true
+        renderer.present(document)
+        await fulfillment(of: [notVisible], timeout: 0.5)
+        let nowVisible = expectation(description: "Latest final part visible after scrolling")
+        renderer.onPresented = { _ in nowVisible.fulfill() }
+        _ = try await renderer.webView.evaluateJavaScript("document.getElementById('bottom').click()")
+        await fulfillment(of: [nowVisible], timeout: 5)
+    }
+
+    func testOfflineReloadRetainsFoldAndViewportWithoutReportingCachedReadiness() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        renderer.setVisible(true)
+        var document = ChatRenderDocument(targetKey: "pane", historyID: "history", revision: "retained", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "thinking", text: "Retained thinking"), .init(kind: "text", text: Array(repeating: "Long retained reply.", count: 100).joined(separator: "\n\n"))])
+        ])
+        document.readinessAllowed = false
+        renderer.present(document)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Long retained reply") == true }
+        _ = try await renderer.webView.evaluateJavaScript("document.querySelector('details').open=true;document.getElementById('chat').scrollTop=240")
+        try await Task.sleep(for: .milliseconds(100))
+        let cached = expectation(description: "Reloaded cached document cannot prove read")
+        cached.isInverted = true
+        renderer.onPresented = { _ in cached.fulfill() }
+        renderer.reloadRetainingContext()
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Long retained reply") == true }
+        await fulfillment(of: [cached], timeout: 0.2)
+        let open = try await renderer.webView.evaluateJavaScript("document.querySelector('details').open") as? Bool
+        let top = try await renderer.webView.evaluateJavaScript("document.getElementById('chat').scrollTop") as? Double
+        XCTAssertEqual(open, true)
+        XCTAssertEqual(top ?? 0, 240, accuracy: 2)
+    }
+
+    private func waitForPage(_ renderer: ChatTranscriptRenderer, _ condition: (Any?) -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            let text = try? await renderer.webView.evaluateJavaScript("document.body.innerText")
+            if condition(text) { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTFail("Actual transcript page did not load")
+        throw CancellationError()
+    }
+
+    func testMountedTranscriptRendersMarkdownAndReportsVisibleLatestReply() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let ready = expectation(description: "Actual latest reply displayed")
+        renderer.onPresented = { proof in
+            XCTAssertEqual(proof.historyID, "history-one")
+            ready.fulfill()
+        }
+        renderer.setVisible(true)
+        renderer.present(.init(targetKey: "machine-pane", historyID: "history-one", revision: "reply-one", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "text", text: "## 真机原型\n\n1. **已完成**\n2. `IPHONE_POC_OK`\n\n```swift\nprint(\"ready\")\n```")])
+        ]))
+        await fulfillment(of: [ready], timeout: 10)
+        let visible = try await renderer.webView.evaluateJavaScript("document.body.innerText") as? String
+        XCTAssertTrue(visible?.contains("真机原型") == true)
+        XCTAssertTrue(visible?.contains("IPHONE_POC_OK") == true)
+        XCTAssertFalse(visible?.contains("## 真机原型") == true)
+        let heading = try await renderer.webView.evaluateJavaScript("document.querySelector('h2')?.textContent") as? String
+        XCTAssertEqual(heading, "真机原型")
+    }
+}

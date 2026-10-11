@@ -32,7 +32,7 @@ struct AgentStatusGlyph: View {
         case .done:
             if unreadDone {
                 Circle()
-                    .fill(Theme.working)
+                    .fill(Theme.unread)
                     .frame(width: 7, height: 7)
             }
         case .idle, .unknown:
