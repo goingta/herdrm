@@ -1,0 +1,86 @@
+{
+  "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a",
+  "baseline": "275daf734a2be07a000e12820fb11864acc8fbb1",
+  "fixture_scene_sha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+  "device": "iPhone 13 Simulator, iOS 26.5",
+  "device_id": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+  "pixel_dimensions": [
+    1170,
+    2532
+  ],
+  "logical_dimensions": [
+    390,
+    844
+  ],
+  "result_bundle": "/private/tmp/herdr-moshi-dd/Logs/Test/Test-HerdrNavigationAcceptance-2026.10.11_21-30-21-+0800.xcresult",
+  "files": [
+    {
+      "file": "chat-en-light.png",
+      "sha256": "9dcc763788fd6d04e25efaaac07e548f773c0012231191226b203ce48c6a533b",
+      "original_attachment": "iphone-simulator-en-light-chat_0_7BC5602C-9484-40E6-A31E-6C7722B16423.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "chat-en-dark.png",
+      "sha256": "0843cb72c27988bffe09570bf6945802ed30fa693a962eb38a45b1a3f1c6c36d",
+      "original_attachment": "iphone-simulator-en-dark-chat_0_B4D19930-0F00-48E0-B7CB-8ED538EFE7B2.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "chat-zh-light.png",
+      "sha256": "08cec2b38dbe28056da8ef8a8de4fc54a9fc8ff7f9b1b568b205360b8e63a5f2",
+      "original_attachment": "iphone-simulator-zh-Hans-light-chat_0_21BA8BA6-C883-4D38-845E-A3B65B348643.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "chat-zh-dark.png",
+      "sha256": "3c0f7b735c32d9c26c2a512f8b9d120ef5b88e311e9c91389263fef8ce6f07f1",
+      "original_attachment": "iphone-simulator-zh-Hans-dark-chat_0_62B9FE27-3256-45CE-A928-0CB58C0484C8.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "keyboard-zh-light.png",
+      "sha256": "79babdfa28114f0f19170b3b95fdf3951c200e1e858f5fbc8e5d00a3c4374fa1",
+      "original_attachment": "iphone-simulator-zh-Hans-light-keyboard_0_08068C66-048E-426B-B2D4-C83F5AFDD3E0.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "keyboard-zh-dark.png",
+      "sha256": "66e1e7c22ffeecf3e4234ed85c04e580894a90062cc968cb64f6fe03159233fa",
+      "original_attachment": "iphone-simulator-zh-Hans-dark-keyboard_0_0D5D3D50-1192-49BB-99E9-D6F988324F0A.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "ghostty-zh-light.png",
+      "sha256": "5abfe918801857657abcef320f29ba8bb9ea70cbd2555f76b843faeb980860df",
+      "original_attachment": "iphone-simulator-zh-Hans-light-terminal-renderer_0_4A232C65-CB09-47AD-BB0C-4F3FD9968393.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "ghostty-zh-dark.png",
+      "sha256": "951a2038e8f603622e88e5e036c38089a75bb79789cf6c29a4d7c9972d63c7ef",
+      "original_attachment": "iphone-simulator-zh-Hans-dark-terminal-renderer_0_FE9C2CB5-D2CB-4FEE-9A9F-A5F765516654.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "sidebar-zh-dark.png",
+      "sha256": "ed6de69787b0d79cceabc3b98258dfe5795f9c00c639a573c08eaf584d9e028a",
+      "original_attachment": "iphone-simulator-zh-Hans-dark-sidebar_0_C02BD691-7FE4-4724-A5D1-A3422BA8833C.png",
+      "source_commit": "eaf07c7dd26315a335e3ce419969d090836b081a"
+    },
+    {
+      "file": "chat-service-en-light.png",
+      "sha256": "ac4cb7dceea1de43ac8b402dac4bbcf51cd28b954ac9ca6923c29a00d48d1fff",
+      "original_attachment": "iphone-simulator-en-light-chat-service_0_79746479-2EEA-4484-A05A-9A3E098F6441.png",
+      "source_commit": "e93f80c512a0734dcb4119898f0d79b4b4da15fe",
+      "result_bundle": "/private/tmp/herdr-moshi-dd/Logs/Test/Test-HerdrNavigationAcceptance-2026.10.11_21-37-30-+0800.xcresult"
+    },
+    {
+      "file": "chat-service-en-dark.png",
+      "sha256": "31fbea612f14b18db4778f4c857df2d3a6a02827a3aa7728f17709364bf17da0",
+      "original_attachment": "iphone-simulator-en-dark-chat-service_0_702D900F-9943-4C59-AA74-E6D349D2F5AF.png",
+      "source_commit": "e93f80c512a0734dcb4119898f0d79b4b4da15fe",
+      "result_bundle": "/private/tmp/herdr-moshi-dd/Logs/Test/Test-HerdrNavigationAcceptance-2026.10.11_21-37-30-+0800.xcresult"
+    }
+  ]
+}
