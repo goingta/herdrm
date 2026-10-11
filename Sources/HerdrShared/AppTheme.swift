@@ -6,7 +6,7 @@ import AppKit
 import UIKit
 #endif
 
-/// Shared sRGB values from the Mac design canvas; native resolution lives here.
+/// Shared app sRGB colors, resolved against each platform's appearance.
 enum Theme {
     private struct RGBA { let value: UInt32; let alpha: Double }
     private static func hex(_ value: UInt32, alpha: Double = 1) -> RGBA {
@@ -32,51 +32,44 @@ enum Theme {
         #endif
     }
 
-    #if os(iOS)
-    // Mobile-only reference palette, herdr-web-ui styles.css (MIT © 2026 devswha).
-    static let text = dynamic(hex(0x2A251F), hex(0xD8D0C3))
-    static let textSecondary = dynamic(hex(0x685E52), hex(0x9B9183))
+    private static func dynamic(_ swatch: AppPalette.Swatch, alpha: Double = 1) -> Color {
+        dynamic(hex(swatch.light, alpha: alpha), hex(swatch.dark, alpha: alpha))
+    }
+
+    static let text = dynamic(AppPalette.text)
+    static let strong = dynamic(AppPalette.strong)
+    static let textSecondary = dynamic(AppPalette.dim)
     static let textTertiary = textSecondary
-    static let textGhost = dynamic(hex(0x9B9183), hex(0x685E52))
-    static let accent = dynamic(hex(0x8C5000), hex(0xF0A830))
-    static let accentWash = dynamic(hex(0x8C5000, alpha: 0.10), hex(0xF0A830, alpha: 0.13))
+    static let textGhost = dynamic(AppPalette.ghost)
+    static let accent = dynamic(AppPalette.accent)
+    static let accentWash = dynamic(AppPalette.accent, alpha: 0.12)
+    static let primary = dynamic(AppPalette.primary)
+    static let primaryText = dynamic(AppPalette.primaryText)
+    static let panel = dynamic(AppPalette.panel)
+    static let elevated = dynamic(AppPalette.elevated)
+    static let input = dynamic(AppPalette.input)
+    static let itemWash = dynamic(AppPalette.elevated)
+    static let itemWashSelected = dynamic(AppPalette.elevated)
+    static let contentBackground = dynamic(AppPalette.background)
+    static let terminalBackground = contentBackground
+    static let statusBarBackground = panel
+    static let sidebarBorder = dynamic(AppPalette.border)
+    static let hairline = sidebarBorder
+
+    #if os(iOS)
+    // Preserve established semantic status colors independently of the app accent.
     static let working = dynamic(hex(0x155A72), hex(0x6CB8D6))
     static let success = dynamic(hex(0x2F6317), hex(0x93C36B))
     static let warning = dynamic(hex(0xA82323), hex(0xFF7B70))
     static let statsAccount = dynamic(hex(0x3F9A7A), hex(0xB5EAD7))
     static let danger = warning
-    static let itemWash = dynamic(hex(0xE8E2D6), hex(0x2A2621))
-    static let itemWashSelected = dynamic(hex(0xF2EEE6), hex(0x211E1A))
-    static let contentBackground = dynamic(hex(0xEEEAE2), hex(0x12100E))
-    static let terminalBackground = dynamic(hex(0xFAF8F3), hex(0x181613))
-    static let statusBarBackground = terminalBackground
-    static let sidebarBorder = dynamic(hex(0xDCD4C6), hex(0x2D2924))
-    static let hairline = sidebarBorder
     #else
-    // text ramp
-    static let text = dynamic(hex(0x242424), hex(0xE2E2E2))
-    static let textSecondary = dynamic(hex(0x666666), hex(0xA3A3A3))
-    static let textTertiary = dynamic(hex(0x858585), hex(0x7D7D7D))
-    static let textGhost = dynamic(hex(0xA4A4A4), hex(0x575757))
-
-    // accent + status
-    static let accent = dynamic(hex(0xC85F44), hex(0xE2795B))
-    static let accentWash = dynamic(hex(0xC85F44, alpha: 0.12), hex(0xE2795B, alpha: 0.14))
     static let working = dynamic(hex(0x2563EB), hex(0x3B82F6))
     static let success = dynamic(hex(0x2FA35F), hex(0x62C987))
     static let warning = dynamic(hex(0xB8862E), hex(0xE0B36A))
     /// grazr's account line, matching the mint the Herdr TUI row uses (#b5ead7).
     static let statsAccount = dynamic(hex(0x3F9A7A), hex(0xB5EAD7))
     static let danger = dynamic(hex(0xC94F44), hex(0xE2726A))
-
-    // surfaces
-    static let itemWash = dynamic(hex(0x141414, alpha: 0.06), hex(0xF0F0F0, alpha: 0.06))
-    static let itemWashSelected = dynamic(hex(0x141414, alpha: 0.07), hex(0xF0F0F0, alpha: 0.07))
-    static let contentBackground = dynamic(hex(0xF6F6F6), hex(0x181818))
-    static let terminalBackground = dynamic(hex(0xFFFFFF), hex(0x101012))
-    static let statusBarBackground = dynamic(hex(0xF1F1F2), hex(0x141416))
-    static let sidebarBorder = dynamic(hex(0xD9D9D9), hex(0x292929))
-    static let hairline = dynamic(hex(0x000000, alpha: 0.08), hex(0xFFFFFF, alpha: 0.06))
 
     #endif
 

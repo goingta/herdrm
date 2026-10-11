@@ -867,7 +867,7 @@ struct AddDeviceSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canAdd)
             }
@@ -947,7 +947,7 @@ struct SSHAuthenticationSheet: View {
                     model.saveSSHPassword(password, for: request)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(password.isEmpty)
             }
@@ -1069,7 +1069,7 @@ struct NewSpaceSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canCreate)
             }
@@ -1389,7 +1389,7 @@ struct NewTerminalSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isStandalone && !allowsStandalone)
             }
@@ -1599,7 +1599,7 @@ struct NewAgentSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!kinds.contains(kind) || parsedArguments == nil)
             }
@@ -1700,7 +1700,7 @@ struct RenameSpaceSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty || trimmedName == entry.workspace.label)
             }
@@ -1752,7 +1752,7 @@ struct RenameAgentSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty || trimmedName == entry.title)
             }
@@ -1804,7 +1804,7 @@ struct RenameTerminalSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty || trimmedName == entry.title)
             }
@@ -1884,7 +1884,7 @@ struct EditDeviceSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.accent)
+                .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSave)
             }

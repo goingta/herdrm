@@ -108,11 +108,11 @@ struct MobileChatComposer: View {
                         .background(MobileReferenceTheme.panel, in: Capsule())
                     }
                     Button { submit() } label: {
-                        if state.submitting { ProgressView().tint(Color(red: 0.106, green: 0.078, blue: 0.027)) }
+                        if state.submitting { ProgressView().tint(MobileReferenceTheme.primaryText) }
                         else { Image(systemName: "arrow.up").font(.system(size: 21, weight: .semibold)) }
                     }
                     .frame(width: 44, height: 44)
-                    .foregroundStyle(Color(red: 0.106, green: 0.078, blue: 0.027))
+                    .foregroundStyle(MobileReferenceTheme.primaryText)
                     .background(MobileReferenceTheme.primary, in: Circle())
                     .disabled(!enabled || state.uploading || state.submitting || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.attachments.isEmpty))
                     .opacity(enabled && !state.uploading ? 1 : 0.5)

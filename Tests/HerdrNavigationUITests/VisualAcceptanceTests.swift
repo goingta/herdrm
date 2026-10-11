@@ -401,6 +401,26 @@ final class VisualAcceptanceTests: XCTestCase {
         #endif
     }
 
+    @MainActor
+    func testChatServiceSheetAppearanceAndCancelPreservesWorkspace() {
+        continueAfterFailure = false
+        for theme in ["light", "dark"] {
+            let app = launch(language: "en", theme: theme)
+            XCTAssertTrue(app.buttons["workspace.tab.read-tab"].waitForExistence(timeout: 5))
+            app.buttons["workspace.more"].tap()
+            app.buttons["Chat Service"].tap()
+            let address = app.textFields["chat.service.address"]
+            XCTAssertTrue(address.waitForExistence(timeout: 3))
+            XCTAssertEqual(address.value as? String, "https://visual-chat-fixture.invalid/")
+            XCTAssertTrue(app.buttons["chat.service.authenticate"].isHittable)
+            keep(app, "\(platform)-en-\(theme)-chat-service")
+            app.buttons["Cancel"].tap()
+            XCTAssertTrue(app.buttons["workspace.tab.read-tab"].isSelected)
+            XCTAssertTrue(app.textFields["agent.composer"].isHittable)
+            app.terminate()
+        }
+    }
+
     @MainActor private func launch(language: String, theme: String, scene: String = "workspace", largeText: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["VISUAL_ACCEPTANCE"] = "1"

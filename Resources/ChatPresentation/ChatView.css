@@ -101,7 +101,7 @@
   gap: var(--space-1);
 }
 
-/* the user's turn is a raised neutral card, not a colored one: amber stays reserved for
+/* the user's turn is a raised neutral card; accent stays reserved for
    selection and the send action, so a long thread does not turn into a wall of color.
    --bubble-border is the palette's call: no edge where the fill alone parts it from the page */
 .chat-bubble {
