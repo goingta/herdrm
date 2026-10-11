@@ -41,3 +41,5 @@ UI fixture 的 SSH attach 为受控不可用，渲染/键盘是实际生产控�
 2026-10-11 已在连接的 iPhone 13 / iOS 18.7.3 构建、更新安装正式 `dev.bybee.herdrm.ios`，保留原数据和 Keychain；构建日志 `/private/tmp/herdr-usability-final-device-build.log`，BUILD SUCCEEDED。安装成功，自动启动失败：CoreDevice 10002 / FBS Security（签名、权限或用户未信任）。本机完整签名校验通过，个人 Team `NHN8A752UN`，provisioning profile 包含该手机且有效至 2026-10-17。已请用户手动打开 App 并核对手机上的开发者信任/验证状态，再验收三项修正；安装不能替代实际 UI 验收。
 
 用户随后确认“现在验证通过了”。2026-10-11 21:14 重试 CoreDevice launch 成功，正式 Bundle 已启动；信任阻碍已解除。三项新修正的手机实际表现仍待用户反馈，未据此勾选真实服务/发送/锁屏验收。
+
+用户已就三项真机修正回复“三项都正常”：真实 Git 分支、外点收键盘/草稿、移动字号均验收通过。后续新增绿黑白配色独立记录于 [Moshi 配色证据](moshi-palette.md)，不把三项验收扩展成真实聊天、消息/附件发送或全部锁屏验收。

@@ -54,3 +54,9 @@ Relative sRGB luminance calculation (`0.2126 R + 0.7152 G + 0.0722 B` after line
 | Light dim `#52525B` / panel `#F5F5F7` | 7.10:1 |
 | Dark terminal text / selection `#153D18` | 11.26:1 |
 | Light terminal text / selection `#D0F4D0` | 14.95:1 |
+
+## Integration and physical installation
+
+Independent final review of `275daf7...cace5d5`: Standards 0 findings; Spec 0 remaining findings after the isolated Chat Service tint correction. Merger integrated the identical tree at `631ae04f19bf8566a7677cce50c383f6977d0ca6`; formal transport/signing source settings were unchanged.
+
+The formal iPhone package built successfully (`/private/tmp/herdr-moshi-device-build.log`) and update-installed to the connected iPhone 13 / iOS 18.7.3 as `dev.bybee.herdrm.ios`, preserving its existing data and Keychain. Automatic launch was rejected with CoreDevice 10002 / FBS Security signature/trust error. Local signature validation passed; the existing personal profile includes the device and expires 2026-10-17. A second launch attempt lost its CoreDevice connection (4000 / transport timeout). The user has been asked to manually open/verify the app and judge the new palette. Installation is complete; new-palette physical acceptance is pending.
