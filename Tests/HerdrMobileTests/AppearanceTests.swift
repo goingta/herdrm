@@ -22,6 +22,8 @@ final class AppearanceTests: XCTestCase {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         try await settle()
+        model.selectMode(.terminal)
+        try await settle()
         let prior = try XCTUnwrap(findTerminal(in: host.view))
         guard case .inMemory(let oldBackend) = prior.configuration.backend else { return XCTFail("Actual renderer expected") }
         oldBackend.receive(Data("OLD_HOST_SENSITIVE_FRAME\r\n".utf8))
@@ -29,6 +31,8 @@ final class AppearanceTests: XCTestCase {
         var edited = device
         edited.host = "different.example"
         try model.updateDevice(edited)
+        try await settle()
+        model.selectMode(.terminal)
         try await settle()
         let current = try XCTUnwrap(findTerminal(in: host.view))
         XCTAssertFalse(current === prior, "Connection-defining edit must construct a new renderer even when device/Space/Tab/pane IDs are reused")
@@ -78,6 +82,8 @@ final class AppearanceTests: XCTestCase {
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
+        try await settle()
+        model.selectMode(.terminal)
         try await settle()
         let view = try XCTUnwrap(findTerminal(in: host.view))
         guard case .inMemory(let backend) = view.configuration.backend else { return XCTFail("Real Ghostty expected") }

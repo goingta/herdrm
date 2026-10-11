@@ -105,7 +105,7 @@ final class SpaceNavigationTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["NAV_HARNESS_LARGE_TEXT"] = "1"
         app.launch()
-        for id in ["spaces.drawer", "devices.menu", "device.add"] {
+        for id in ["spaces.drawer", "workspace.mode.chat", "workspace.mode.terminal", "workspace.more"] {
             let button = app.buttons[id]
             XCTAssertTrue(button.waitForExistence(timeout: 5))
             XCTAssertTrue(button.isHittable, "Long names never hide \(id)")

@@ -344,7 +344,7 @@ final class MobileAttachSession: ObservableObject {
         }
     }
 
-    var presentationVisible = false {
+    var presentationVisible = true {
         didSet { if !presentationVisible { hidePresentedContent() } }
     }
 
