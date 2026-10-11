@@ -426,6 +426,8 @@ final class MobileAppModel {
         let bindingGeneration: UUID?
     }
     @ObservationIgnored private var chatControllers: [ChatControllerKey: ChatTranscriptController] = [:]
+    @ObservationIgnored private var chatCompletionChecks: [ChatControllerKey: Task<Void, Never>] = [:]
+    private var verifiedChatConnections: [ChatControllerKey: (revision: String, connectionID: UUID)] = [:]
     @ObservationIgnored private var chatDrafts: [MobilePaneContext: MobileChatDraft] = [:]
 
     func chatController(for target: MobilePromptTarget) -> ChatTranscriptController? {
@@ -442,13 +444,66 @@ final class MobileAppModel {
                   let current = self.currentPromptTarget, MobilePaneContext(current) == MobilePaneContext(target),
                   self.selectedTransportReady, self.paneMode == .chat, UIApplication.shared.applicationState == .active,
                   self.selectedAgent?.status == .done, proof.target == webTarget,
-                  proof.completionRevision > 0, proof.completionRevision == self.chatCompletionRevision(for: target),
+                  (proof.completionRevision > 0 || proof.verifiedByCurrentPane),
+                  proof.completionRevision == self.chatCompletionRevision(for: target),
                   controller.conversation?.historyID == proof.historyID else { return }
+            if proof.verifiedByCurrentPane {
+                guard self.verifiedChatConnections[key]?.revision == proof.revision,
+                      self.verifiedChatConnections[key]?.connectionID == current.connectionID else { return }
+            }
             let unreadKey = AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)
             if self.agentReadState.acknowledgeChatResult(unreadKey, foreground: true) { self.revision += 1 }
         }
+        controller.onVisibleLatestReply = { [weak self, weak controller] candidate in
+            guard let self, let controller else { return }
+            self.verifyChatCompletion(candidate, controller: controller, key: key)
+        }
         chatControllers[key] = controller
         return controller
+    }
+
+    /// A cold restored unread has no in-memory pre-completion baseline. Verify
+    /// the whole substantial final reply tail against this connection's current
+    /// pane viewport; an earlier reply somewhere in scrollback is insufficient.
+    private func verifyChatCompletion(_ candidate: ChatVisibleReplyCandidate,
+                                      controller: ChatTranscriptController, key: ChatControllerKey) {
+        guard chatCompletionChecks[key] == nil, chatControllers[key] === controller,
+              let target = currentPromptTarget, key.target == candidate.target,
+              target.deviceID == candidate.target.nativeDeviceID,
+              target.presentationID == candidate.target.presentationID,
+              target.spaceID == candidate.target.spaceID, target.tabID == candidate.target.tabID,
+              target.paneID == candidate.target.paneID,
+              selectedTransportReady, paneMode == .chat, selectedAgent?.status == .done,
+              UIApplication.shared.applicationState == .active,
+              chatCompletionRevision(for: target) == candidate.completionRevision,
+              agentReadState.unread.contains(AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)),
+              let transport = selectedSession?.transport else { return }
+        chatCompletionChecks[key] = Task { [weak self, weak controller] in
+            guard let self, let controller else { return }
+            defer { self.chatCompletionChecks[key] = nil }
+            guard let result = try? await transport.request(method: "pane.read", params: .object([
+                "pane_id": .string(target.paneID), "source": .string("visible"), "format": .string("ansi")
+            ])), let paneText = result["read"]?["text"]?.stringValue,
+                  !Task.isCancelled, self.chatControllers[key] === controller,
+                  self.currentPromptTarget == target, self.selectedSession?.transport === transport,
+                  self.selectedTransportReady, self.paneMode == .chat, self.selectedAgent?.status == .done,
+                  UIApplication.shared.applicationState == .active,
+                  self.chatCompletionRevision(for: target) == candidate.completionRevision,
+                  Self.currentPaneEndsWithReply(paneText, reply: candidate.text) else { return }
+            self.verifiedChatConnections[key] = (candidate.revision, target.connectionID)
+            controller.acceptVerifiedCompletion(candidate: candidate)
+        }
+    }
+
+    private static func currentPaneEndsWithReply(_ paneANSI: String, reply: String) -> Bool {
+        func normalized(_ value: String) -> String {
+            value.replacingOccurrences(of: "\\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\u001B\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+                .filter { !$0.isWhitespace }
+        }
+        let tail = normalized(reply)
+        guard tail.count >= 64 else { return false }
+        return normalized(String(paneANSI.suffix(32_768))).hasSuffix(tail)
     }
 
     func chatDraft(for target: MobilePromptTarget) -> MobileChatDraft {
@@ -472,6 +527,9 @@ final class MobileAppModel {
 
     func invalidateChat(for deviceID: UUID) {
         chatBindingGenerations[deviceID] = UUID()
+        for (key, task) in chatCompletionChecks where key.target.nativeDeviceID == deviceID { task.cancel() }
+        chatCompletionChecks = chatCompletionChecks.filter { $0.key.target.nativeDeviceID != deviceID }
+        verifiedChatConnections = verifiedChatConnections.filter { $0.key.target.nativeDeviceID != deviceID }
         for (key, controller) in chatControllers where key.target.nativeDeviceID == deviceID {
             controller.invalidate()
             Task { await controller.service.invalidate() }
@@ -579,6 +637,9 @@ final class MobileAppModel {
     private func observeChatCompletions(agents: [AgentInfo], deviceID: UUID, authoritative: Bool) {
         for agent in agents {
             let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)
+            for (controllerKey, controller) in chatControllers where controllerKey.target.nativeDeviceID == deviceID && controllerKey.target.paneID == agent.paneID {
+                controller.observeAgentWorking(agent.status == .working)
+            }
             if let previous = completionStatuses[key], previous != .done, agent.status == .done {
                 completionRevisions[key, default: 0] &+= 1
             }

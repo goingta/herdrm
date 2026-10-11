@@ -80,7 +80,11 @@ enum Theme {
 
     #endif
 
+    #if os(macOS)
+    static let unread = working
+    #else
     static let unread = dynamic(hex(0x2563EB), hex(0x3B82F6))
+    #endif
 
     /// Distinct tints for device chips (deliberately avoids the status colors).
     static let devicePalette: [Color] = [

@@ -16,27 +16,27 @@ struct MobileRootView: View {
             VStack(spacing: 0) {
                 topBar
                 ZStack(alignment: .leading) {
-                VStack(spacing: 0) {
-                    if !model.workspaceTabs.isEmpty { tabStrip }
-                    terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(alignment: .top) {
-                            if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
-                                restorationBanner
+                    VStack(spacing: 0) {
+                        if !model.workspaceTabs.isEmpty { tabStrip }
+                        terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .overlay(alignment: .top) {
+                                if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
+                                    restorationBanner
+                                }
+                            }
+                    }
+                    .background(Theme.contentBackground)
+                    .accessibilityHidden(drawerShown)
+                    if drawerShown {
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Button { drawerShown = false } label: { Color.black.opacity(0.28) }
+                                    .buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Close Sidebar"))
+                                    .accessibilityIdentifier("spaces.drawer.close")
+                                drawer.frame(width: min(340, proxy.size.width * 0.86))
                             }
                         }
-                }
-                .background(Theme.contentBackground)
-                .accessibilityHidden(drawerShown)
-                if drawerShown {
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Button { drawerShown = false } label: { Color.black.opacity(0.28) }
-                                .buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Close Sidebar"))
-                                .accessibilityIdentifier("spaces.drawer.close")
-                            drawer.frame(width: min(340, proxy.size.width * 0.86))
-                        }
                     }
-                }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)

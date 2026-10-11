@@ -126,6 +126,7 @@ struct MobileChatWorkspace: View {
     private func updateActivity() {
         guard let controller else { return }
         controller.onOpenURL = openURL
+        controller.observeAgentWorking(model.selectedAgent?.status == .working)
         controller.setActivity(visible: visible, foreground: scenePhase == .active,
             connectionValidated: model.selectedTransportReady && model.currentPromptTarget == target,
             completionRevision: model.chatCompletionRevision(for: target))
