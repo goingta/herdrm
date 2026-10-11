@@ -54,7 +54,15 @@ struct MobileRootView: View {
         }
         .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
         .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
+        .background(MobileOutsideInputDismissal(enabled: rootVisible && chatDevice == nil && !model.showAddDevice && model.editingDevice == nil).allowsHitTesting(false))
         .task { if model.selectedDeviceID != nil { model.connectSelected() } }
+        .task(id: "\(drawerShown)/\(rootVisible)/\(scenePhase == .active)/\(model.selectedDeviceID?.uuidString ?? "")/\(model.selectedSession?.connectionID.uuidString ?? "")/\(model.selectedTransportReady)") {
+            guard drawerShown, rootVisible, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await model.refreshSpaceGitBranches()
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
         .task(id: [model.selectedTransportReady, scenePhase == .active]) {
             restorationHintVisible = false
             guard !model.selectedTransportReady, scenePhase == .active else { return }
@@ -81,7 +89,7 @@ struct MobileRootView: View {
                 if let kind = model.selectedAgent?.agent,
                    let resource = BrandIconLoader.agentIcon(for: kind) { BrandIcon(resource: resource, size: 22) }
                 Text(model.selectedPaneTitle ?? "herdrm")
-                    .font(.system(.headline, design: .default).weight(.semibold))
+                    .mobileFont(.title, weight: .semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .accessibilityIdentifier("workspace.session.title")
             }
@@ -154,7 +162,7 @@ struct MobileRootView: View {
                 }
                 if let device = model.selectedDevice {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label(device.name, systemImage: "desktopcomputer").font(.subheadline.weight(.semibold))
+                        Label(device.name, systemImage: "desktopcomputer").mobileFont(.body, weight: .semibold)
                         if !device.isTailcat {
                             Text("\(device.username)@\(device.host):\(device.port)")
                                 .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -174,8 +182,11 @@ struct MobileRootView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "folder").foregroundStyle(MobileReferenceTheme.dim)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(space.label).font(.body).foregroundStyle(Theme.text)
-                                Text("#\(space.number)").font(.caption).foregroundStyle(Theme.textSecondary)
+                                Text(space.label).mobileFont(.body).foregroundStyle(Theme.text)
+                                if let branch = model.spaceGitBranch(space.workspaceID) {
+                                    Text(branch).mobileFont(.secondary).foregroundStyle(Theme.textSecondary)
+                                        .accessibilityIdentifier("space.branch.\(space.workspaceID)")
+                                }
                             }
                             .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 4)
@@ -191,7 +202,7 @@ struct MobileRootView: View {
                     .accessibilityIdentifier("space.select.\(space.workspaceID)")
                     .accessibilityAddTraits(model.selectedSpaceID == space.workspaceID ? [.isSelected] : [])
                 }
-                if model.spaces.isEmpty { Text(connectionLabel).font(.callout).foregroundStyle(Theme.textSecondary) }
+                if model.spaces.isEmpty { Text(connectionLabel).mobileFont(.body).foregroundStyle(Theme.textSecondary) }
             }
             .padding(14)
         }
@@ -209,7 +220,7 @@ struct MobileRootView: View {
                             Button { model.selectTab(tab.id) } label: {
                                 HStack(spacing: 7) {
                                     SpaceAttentionGlyph(attention: model.tabAttention(for: tab.id))
-                                    Text(tab.label).font(.subheadline.weight(.medium)).lineLimit(1)
+                                    Text(tab.label).mobileFont(.body, weight: .medium).lineLimit(1)
                                 }
                                 .padding(.horizontal, 12).frame(minHeight: 44)
                             }
@@ -316,8 +327,8 @@ struct MobileRootView: View {
 
     private func stateView(_ title: String.LocalizationValue, detail: String, symbol: String, retry: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(AppLocalization.string(title), systemImage: symbol).font(.headline).foregroundStyle(Theme.text)
-            if !detail.isEmpty { Text(detail).font(.callout).foregroundStyle(Theme.textSecondary) }
+            Label(AppLocalization.string(title), systemImage: symbol).mobileFont(.title, weight: .semibold).foregroundStyle(Theme.text)
+            if !detail.isEmpty { Text(detail).mobileFont(.body).foregroundStyle(Theme.textSecondary) }
             if retry {
                 Button(AppLocalization.string("Reconnect")) { model.connectSelected() }
                     .buttonStyle(.bordered).frame(minHeight: 44)

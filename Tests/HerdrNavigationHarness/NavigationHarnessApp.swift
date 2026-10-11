@@ -126,8 +126,21 @@ private actor VisualTransport: MobileTransport {
     func request(method: String, params: JSONValue) async throws -> JSONValue {
         if method == "ping" { return .object(["version": .string("fixture"), "protocol": .number(22)]) }
         let encoded = try JSONEncoder().encode(fixture.snapshot)
-        return .object(["snapshot": try JSONDecoder().decode(JSONValue.self, from: encoded)])
+        var snapshot = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        // Independent SSH metadata boundary: the known checkout and a non-repo
+        // directory use real snapshot cwd fields, never a guessed label.
+        for key in ["agents", "panes"] {
+            if let rows = snapshot[key] as? [[String: Any]] {
+                snapshot[key] = rows.map { row in
+                    var row = row
+                    row["cwd"] = row["workspace_id"] as? String == "visual-workspace" ? "/fixture/repo" : "/fixture/non-repo"
+                    return row
+                }
+            }
+        }
+        return .object(["snapshot": try JSONDecoder().decode(JSONValue.self, from: JSONSerialization.data(withJSONObject: snapshot))])
     }
+    func gitBranch(at path: String) async throws -> String? { path == "/fixture/repo" ? "feature/mobile-controls" : nil }
     nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
         throw VisualFixtureAttachError()

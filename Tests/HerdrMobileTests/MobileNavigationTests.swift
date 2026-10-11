@@ -6,6 +6,72 @@ import HerdrSSH
 
 @MainActor
 final class MobileNavigationTests: XCTestCase {
+    func testWorkspaceShowsItsLiveBranchAndNeverInventsOneForNonRepository() async throws {
+        let (model, _) = fixture()
+        model.connectSelected()
+        try await wait { model.selectedTransportReady }
+        await model.refreshSpaceGitBranches()
+        try await wait { model.spaceGitBranch("space-a") == "feature/mobile-controls" }
+        XCTAssertNil(model.spaceGitBranch("space-b"))
+        await model.selectedSession?.disconnect()
+    }
+
+    func testOldDevelopmentMachineBranchReplyCannotReplaceTheCurrentCheckout() async throws {
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let store = MobileDeviceStore(defaults: defaults)
+        store.save([MobileDevice(name: "Old host", host: "old.example", username: "developer")])
+        let gate = GitReplyGate()
+        let old = NavigationFixture(branch: "old-host-branch", gate: gate)
+        let new = NavigationFixture(branch: "current-host-branch")
+        let model = MobileAppModel(store: store, chatCredentialRemover: { _, _ in }, connector: { device in
+            device.host == "old.example" ? old : new
+        })
+        model.connectSelected()
+        try await wait { model.selectedTransportReady }
+        let pending = Task { await model.refreshSpaceGitBranches() }
+        try await gate.waitUntilStarted()
+        var edited = try XCTUnwrap(model.selectedDevice)
+        edited.host = "new.example"
+        try model.updateDevice(edited)
+        try await wait { model.selectedTransportReady }
+        await model.refreshSpaceGitBranches()
+        XCTAssertEqual(model.spaceGitBranch("space-a"), "current-host-branch")
+        await gate.release()
+        await pending.value
+        XCTAssertEqual(model.spaceGitBranch("space-a"), "current-host-branch")
+        await model.selectedSession?.disconnect()
+    }
+
+    func testSpaceCheckoutMetadataWinsOverPaneWorkingDirectory() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.save([MobileDevice(name: "Worktree", host: "fixture.example", username: "developer")])
+        let transport = NavigationFixture(checkoutPath: "/actual-checkout")
+        let model = MobileAppModel(store: store, connector: { _ in transport })
+        model.connectSelected()
+        try await wait { model.selectedTransportReady }
+        await model.refreshSpaceGitBranches()
+        XCTAssertEqual(model.spaceGitBranch("space-a"), "checkout-branch")
+        await model.selectedSession?.disconnect()
+    }
+
+    func testChangedWorkingDirectoryRejectsItsPendingOldBranchEvenOnTheSameConnection() async throws {
+        let gate = GitReplyGate()
+        let transport = NavigationFixture(gate: gate)
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        store.save([MobileDevice(name: "Checkout", host: "fixture.example", username: "developer")])
+        let model = MobileAppModel(store: store, connector: { _ in transport })
+        model.connectSelected()
+        try await wait { model.selectedTransportReady }
+        let pending = Task { await model.refreshSpaceGitBranches() }
+        try await gate.waitUntilStarted()
+        await transport.changeWorkingDirectory()
+        _ = await model.selectedSession?.refresh()
+        await gate.release(); await pending.value
+        XCTAssertNil(model.spaceGitBranch("space-a"))
+        await model.refreshSpaceGitBranches()
+        XCTAssertEqual(model.spaceGitBranch("space-a"), "new-checkout-branch")
+        await model.selectedSession?.disconnect()
+    }
     func testFirstSnapshotOpensTheFocusedSpaceAndItsActiveTabPane() async throws {
         let (model, _) = fixture()
         model.connectSelected()
@@ -92,9 +158,27 @@ final class MobileNavigationTests: XCTestCase {
 }
 
 private actor NavigationFixture: MobileTransport {
+    let branch: String
+    let gate: GitReplyGate?
+    let checkoutPath: String?
+    private var changedDirectory = false
+    init(branch: String = "feature/mobile-controls", gate: GitReplyGate? = nil, checkoutPath: String? = nil) {
+        self.branch = branch; self.gate = gate; self.checkoutPath = checkoutPath
+    }
+    func changeWorkingDirectory() { changedDirectory = true }
+    func gitBranch(at path: String) async throws -> String? {
+        if path == checkoutPath { return "checkout-branch" }
+        if path == "/different-checkout" { return "new-checkout-branch" }
+        guard path == "/repo" else { return nil }
+        await gate?.wait()
+        return branch
+    }
     func request(method: String, params: JSONValue) async throws -> JSONValue {
         if method == "ping" { return .object(["version": .string("fixture"), "protocol": .number(22)]) }
-        let data = Data(Self.snapshot.utf8)
+        var snapshot = Self.snapshot
+        if let checkoutPath { snapshot = snapshot.replacingOccurrences(of: "\"label\":\"移动端日常开发工作区\"", with: "\"label\":\"移动端日常开发工作区\",\"worktree\":{\"checkout_path\":\"\(checkoutPath)\"}") }
+        if changedDirectory { snapshot = snapshot.replacingOccurrences(of: "\"cwd\":\"/repo\"", with: "\"cwd\":\"/different-checkout\"") }
+        let data = Data(snapshot.utf8)
         return try JSONDecoder().decode(JSONValue.self, from: data)
     }
     nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> {
@@ -107,8 +191,22 @@ private actor NavigationFixture: MobileTransport {
       "focused_workspace_id":"space-a","focused_pane_id":"pane-two",
       "workspaces":[{"workspace_id":"space-a","number":1,"label":"移动端日常开发工作区","active_tab_id":"tab-two"},{"workspace_id":"space-b","number":2,"label":"第二个同名目标的工作区","active_tab_id":"tab-other"}],
       "tabs":[{"tab_id":"tab-two","workspace_id":"space-a","number":2,"label":"执行命令"},{"tab_id":"tab-one","workspace_id":"space-a","number":1,"label":"需求设计"},{"tab_id":"tab-other","workspace_id":"space-b","number":1,"label":"需求设计"}],
-      "agents":[{"workspace_id":"space-a","tab_id":"tab-one","pane_id":"pane-one","agent":"codex","agent_status":"working","name":"same-name"},{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"pane-two","agent":"claude-code","agent_status":"done","name":"same-name"},{"workspace_id":"space-b","tab_id":"tab-other","pane_id":"pane-other","agent":"codex","agent_status":"blocked","name":"same-name"}],
+      "agents":[{"workspace_id":"space-a","tab_id":"tab-one","pane_id":"pane-one","agent":"codex","agent_status":"working","name":"same-name","cwd":"/repo"},{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"pane-two","agent":"claude-code","agent_status":"done","name":"same-name","cwd":"/repo"},{"workspace_id":"space-b","tab_id":"tab-other","pane_id":"pane-other","agent":"codex","agent_status":"blocked","name":"same-name","cwd":"/not-a-repository"}],
       "panes":[{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"shell-two","terminal_id":"terminal-two","terminal_title":"构建服务 · 普通终端"}]
     }}
     """
+}
+
+private actor GitReplyGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var started = false
+    func wait() async { started = true; await withCheckedContinuation { continuation = $0 } }
+    func release() { continuation?.resume(); continuation = nil }
+    func waitUntilStarted() async throws {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !started {
+            guard ContinuousClock.now < deadline else { throw CancellationError() }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
 }

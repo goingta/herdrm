@@ -11,10 +11,13 @@ protocol MobileTransport: AnyObject, Sendable {
     func request(method: String, params: JSONValue) async throws -> JSONValue
     func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error>
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel
+    /// Read-only checkout metadata. Control-only transports may not expose a shell.
+    func gitBranch(at path: String) async throws -> String?
     func close() async
 }
 
 extension MobileTransport {
+    func gitBranch(at path: String) async throws -> String? { nil }
     func request<T: Decodable>(
         method: String,
         params: JSONValue = .object([:]),
@@ -159,6 +162,20 @@ final class SSHDirectTransport: MobileTransport {
 
     static func fingerprint(_ key: Data) -> String {
         "SHA256:" + Data(SHA256.hash(data: key)).base64EncodedString()
+    }
+
+    func gitBranch(at path: String) async throws -> String? {
+        guard path.hasPrefix("/"), !path.contains("\0"), path.utf8.count <= 4096 else { return nil }
+        // Never interpolate a cwd as shell syntax. symbolic-ref only reads HEAD;
+        // non-repositories and detached checkouts have no branch to invent.
+        let quoted = "'" + path.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+        let result = try await connection.execute(
+            "GIT_OPTIONAL_LOCKS=0 git -C \(quoted) symbolic-ref --quiet --short HEAD", timeout: .seconds(2))
+        guard result.exitStatus == 0, result.reachedEOF, result.stdout.count <= 1024,
+              let output = String(data: result.stdout, encoding: .utf8) else { return nil }
+        let branch = output.trimmingCharacters(in: .newlines)
+        guard !branch.isEmpty, !branch.contains(where: { $0.isNewline || $0.asciiValue.map { $0 < 32 || $0 == 127 } == true }) else { return nil }
+        return branch
     }
 
     func request(method: String, params: JSONValue) async throws -> JSONValue {

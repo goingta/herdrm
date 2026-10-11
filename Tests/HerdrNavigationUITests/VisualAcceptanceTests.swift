@@ -2,6 +2,126 @@ import XCTest
 
 final class VisualAcceptanceTests: XCTestCase {
     @MainActor
+    func testPhoneHeaderUsesMobileReadingScaleAndNativeButtonsKeepTheirTouchArea() {
+        continueAfterFailure = false
+        let app = launch(language: "zh-Hans", theme: "dark")
+        let title = app.staticTexts["workspace.session.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        // Reference default title is 16px/1.2, not the native 17pt headline.
+        XCTAssertLessThanOrEqual(title.frame.height, 20, "Default title glyph height: \(title.frame)")
+        for id in ["spaces.drawer", "workspace.more", "workspace.mode.chat", "workspace.mode.terminal"] {
+            let button = app.buttons[id]
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+        }
+        keep(app, "iphone-usability-mobile-reading-scale")
+        let normalHeight = title.frame.height
+        app.terminate()
+        let accessible = launch(language: "zh-Hans", theme: "dark", largeText: true)
+        let enlargedTitle = accessible.staticTexts["workspace.session.title"]
+        XCTAssertTrue(enlargedTitle.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(enlargedTitle.frame.height, normalHeight * 1.5)
+        keep(accessible, "iphone-usability-dynamic-type-reading-scale")
+    }
+    @MainActor
+    func testTappingOutsideChatComposerDismissesKeyboardAndKeepsDraftAndControls() {
+        continueAfterFailure = false
+        let app = launch(language: "en", theme: "dark")
+        let composer = app.textFields["agent.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap(); composer.typeText("Keep this unsent draft")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.staticTexts["workspace.session.title"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(composer.value as? String, "Keep this unsent draft")
+        composer.tap(); composer.typeText(" continues")
+        let editingDraft = composer.value as? String
+        XCTAssertTrue(editingDraft?.contains("continues") == true)
+        let work = app.webViews["chat.transcript"].buttons.matching(NSPredicate(format: "label CONTAINS %@", "Worked for 6s")).firstMatch
+        work.tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(composer.value as? String, editingDraft)
+        XCTAssertTrue(app.webViews["chat.transcript"].descendants(matching: .any).matching(NSPredicate(format: "label == %@", "read_file · Read fixture README")).firstMatch.waitForExistence(timeout: 3))
+        keep(app, "iphone-usability-chat-keyboard-dismissed")
+    }
+
+    @MainActor
+    func testOutsideTapDismissesAgentAndOrdinaryShellComposerKeyboardsWithoutLosingDrafts() {
+        continueAfterFailure = false
+        let app = launch(language: "en", theme: "dark")
+        app.buttons["workspace.mode.terminal"].tap()
+        let agent = app.textFields["agent.composer"]
+        XCTAssertTrue(agent.waitForExistence(timeout: 5))
+        agent.tap(); agent.typeText("Unsent Agent draft")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.staticTexts["workspace.session.title"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(agent.value as? String, "Unsent Agent draft")
+        app.buttons["workspace.panes"].tap(); app.buttons["workspace.pane.shell"].tap()
+        let shell = app.textFields["terminal.composer"]
+        XCTAssertTrue(shell.waitForExistence(timeout: 3))
+        shell.tap(); shell.typeText("Unsent shell draft")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.staticTexts["workspace.session.title"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(shell.value as? String, "Unsent shell draft")
+        keep(app, "iphone-usability-shell-keyboard-dismissed")
+    }
+
+    @MainActor
+    func testDrawerShowsCheckoutBranchAndOmitsNumberAndNonRepositoryBranch() {
+        continueAfterFailure = false
+        let app = launch(language: "en", theme: "dark")
+        XCTAssertTrue(app.buttons["spaces.drawer"].waitForExistence(timeout: 5))
+        app.buttons["spaces.drawer"].tap()
+        let branch = app.staticTexts["space.branch.visual-workspace"]
+        XCTAssertTrue(branch.waitForExistence(timeout: 5))
+        XCTAssertEqual(branch.label, "feature/mobile-controls")
+        XCTAssertFalse(app.staticTexts["#1"].exists)
+        XCTAssertFalse(app.staticTexts["space.branch.visual-long"].exists)
+        keep(app, "iphone-usability-sidebar-branch")
+    }
+
+    @MainActor
+    func testGhosttyKeyboardToggleSurvivesOpeningTapAndDismissesOnOutsideTap() {
+        continueAfterFailure = false
+        let app = launch(language: "en", theme: "dark")
+        app.buttons["workspace.mode.terminal"].tap()
+        let keyboard = app.buttons["agent.keyboard"]
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        XCTAssertTrue(keyboard.isHittable)
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.staticTexts["workspace.session.title"].tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        let composer = app.textFields["agent.composer"]
+        composer.tap(); composer.typeText("Composer owns these keystrokes")
+        XCTAssertEqual(composer.value as? String, "Composer owns these keystrokes")
+        app.buttons["terminal.modifier.ctrl"].tap()
+        XCTAssertTrue(app.buttons["terminal.modifier.ctrl"].isSelected)
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)], timeout: 3) == .completed)
+        XCTAssertEqual(composer.value as? String, "Composer owns these keystrokes")
+        keep(app, "iphone-usability-ghostty-composer-focus")
+    }
+
+    @MainActor
+    func testInactiveAgentKeyboardObserverLeavesPreviewWebInputsEditable() throws {
+        continueAfterFailure = false
+        let server = try PreviewHTTPFixture()
+        let app = launch(language: "en", theme: "dark")
+        app.buttons["tab.preview"].tap()
+        let address = app.textFields["preview.address"]
+        address.tap(); address.typeText("http://127.0.0.1:\(server.port)/")
+        app.buttons["preview.open"].tap()
+        let input = app.webViews.textFields["Preview editable input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap(); input.typeText("Preview draft")
+        input.tap(); input.typeText(" still editable")
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        XCTAssertTrue((input.value as? String)?.contains("still editable") == true)
+        keep(app, "iphone-usability-preview-input-isolation")
+    }
+    @MainActor
     func testActualReferenceChatRendersCanonicalConversation() {
         continueAfterFailure = false
         let app = launch(language: "zh-Hans", theme: "light")

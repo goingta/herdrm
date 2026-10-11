@@ -508,6 +508,7 @@ struct MobileTerminalScreen: View {
     @State private var keyboardShown = false
     @State private var submitting = false
     @State private var promptError = false
+    @FocusState private var composerFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
     private let transport: MobileTransport
@@ -568,6 +569,11 @@ struct MobileTerminalScreen: View {
         }
         .onChange(of: refreshRevision) { _, _ in Task { await session.refreshScreen() } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
+        .onReceive(NotificationCenter.default.publisher(for: MobileKeyboardDismissal.notification)) { _ in
+            composerFocused = false
+            keyboardShown = false
+        }
+        .onChange(of: composerFocused) { _, focused in if focused { keyboardShown = false } }
         .onChange(of: agentTabVisible) { _, value in
             session.presentationVisible = value
             if value, transportReady { session.replaceTransport(transport); session.start() }
@@ -628,6 +634,8 @@ struct MobileTerminalScreen: View {
                 text: draft,
                 axis: .vertical
             )
+            .focused($composerFocused)
+            .mobileFont(.input)
             .lineLimit(1...4)
             .textFieldStyle(.plain)
             .padding(.horizontal, 12)
@@ -843,7 +851,7 @@ private struct KeyChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.callout.monospaced().weight(.medium))
+                .mobileFont(.keyboard, weight: .medium)
                 .foregroundStyle(pressed ? MobileReferenceTheme.accent : MobileReferenceTheme.dim)
                 .frame(minWidth: 50)
                 .frame(minHeight: 44)

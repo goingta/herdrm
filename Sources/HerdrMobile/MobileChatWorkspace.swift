@@ -29,6 +29,7 @@ struct MobilePaneWorkspace: View {
                     .environment(\.agentTabVisible, terminalVisible)
                     .opacity(model.paneMode == .terminal ? 1 : 0)
                     .allowsHitTesting(terminalVisible).accessibilityHidden(!terminalVisible)
+                    .zIndex(model.paneMode == .terminal ? 1 : 0)
             }
             MobileChatWorkspace(model: model, target: target, configureChat: configureChat, openURL: openURL)
                 .id(ChatViewIdentity(configuration: model.selectedDevice?.chatConfiguration,
@@ -36,6 +37,7 @@ struct MobilePaneWorkspace: View {
                 .opacity(model.paneMode == .chat ? 1 : 0)
                 .allowsHitTesting(rootVisible && model.paneMode == .chat)
                 .accessibilityHidden(!(rootVisible && model.paneMode == .chat))
+                .zIndex(model.paneMode == .chat ? 1 : 0)
         }
         .onAppear { if model.paneMode == .terminal { terminalWasOpened = true } }
         .onChange(of: model.paneMode) { _, mode in if mode == .terminal { terminalWasOpened = true } }
@@ -87,9 +89,9 @@ struct MobileChatWorkspace: View {
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "bubble.left.and.bubble.right").font(.largeTitle)
-                    Text(AppLocalization.string("Connect Chat Service")).font(.headline)
+                    Text(AppLocalization.string("Connect Chat Service")).mobileFont(.title, weight: .semibold)
                     Text(AppLocalization.string("Bind this development machine to its herdr-web-ui service to read real conversations."))
-                        .font(.callout).multilineTextAlignment(.center)
+                        .mobileFont(.body).multilineTextAlignment(.center)
                     Button(AppLocalization.string("Chat Service"), action: configureChat)
                         .buttonStyle(.bordered)
                 }
