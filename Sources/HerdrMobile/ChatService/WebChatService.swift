@@ -8,6 +8,12 @@ actor WebChatService {
     private var generation = UUID()
     private struct CacheKey: Hashable { let target: WebChatTarget; let page: WebChatPage }
     private var cache: [CacheKey: WebChatConversationResult] = [:]
+    private var cacheOrder: [CacheKey] = []
+    private var cacheCosts: [CacheKey: Int] = [:]
+    private var cacheBytes = 0
+    private let cacheByteLimit = 8 * 1024 * 1024
+    private let cacheAnswerLimit = 32
+    private let pendingLimit = 8
     private var pending: [UUID: Task<(Data, URLResponse), Error>] = [:]
     private var requests: [CacheKey: UUID] = [:]
     private var historyEpochs: [WebChatTarget: UUID] = [:]
@@ -21,6 +27,9 @@ actor WebChatService {
     func invalidate() {
         generation = UUID()
         cache.removeAll()
+        cacheOrder.removeAll()
+        cacheCosts.removeAll()
+        cacheBytes = 0
         requests.removeAll()
         historyEpochs.removeAll()
         pending.values.forEach { $0.cancel() }
@@ -39,10 +48,15 @@ actor WebChatService {
         let key = CacheKey(target: target, page: page)
         let serial = UUID()
         let historyEpoch = historyEpochs[target] ?? UUID()
-        historyEpochs[target] = historyEpoch
         let expectedHistory = cache[CacheKey(target: target, page: .latest)]?.conversation.historyID
         if page != .latest, expectedHistory == nil { throw WebChatError.historyChanged }
+        historyEpochs[target] = historyEpoch
         requests[key] = serial
+        defer {
+            if requests[key] == serial { requests.removeValue(forKey: key) }
+            let retained = Set(cache.keys.map(\.target)).union(requests.keys.map(\.target))
+            historyEpochs = historyEpochs.filter { retained.contains($0.key) }
+        }
         try await validate(target)
         guard generation == epoch, requests[key] == serial else { throw WebChatError.staleResponse }
         var query = [URLQueryItem(name: "pane_id", value: target.paneID)]
@@ -60,7 +74,7 @@ actor WebChatService {
         do {
             (data, response) = try await request(path: machinePath("pane/conversation"), query: query, etag: previous?.etag)
         } catch WebChatError.historyChanged {
-            cache = cache.filter { $0.key.target != target }
+            removeCachedAnswers(for: target)
             historyEpochs[target] = UUID()
             requests = requests.filter { $0.key.target != target }
             throw WebChatError.historyChanged
@@ -69,18 +83,21 @@ actor WebChatService {
         guard page == .latest || historyEpochs[target] == historyEpoch else { throw WebChatError.historyChanged }
         if response.statusCode == 304 {
             guard let previous else { throw WebChatError.invalidResponse }
+            cacheOrder.removeAll { $0 == key }
+            cacheOrder.append(key)
             return WebChatConversationResult(conversation: previous.conversation, etag: previous.etag, notModified: true, historyReplaced: false)
         }
+        guard data.count <= cacheByteLimit else { throw WebChatError.invalidResponse }
         guard let conversation = try? JSONDecoder().decode(WebChatConversation.self, from: data) else { throw WebChatError.incompatible }
         if page != .latest, conversation.historyID != expectedHistory { throw WebChatError.historyChanged }
         let oldHistory = cache[CacheKey(target: target, page: .latest)]?.conversation.historyID
         let replaced = oldHistory != nil && oldHistory != conversation.historyID
         if replaced {
-            cache = cache.filter { $0.key.target != target }
+            removeCachedAnswers(for: target)
             historyEpochs[target] = UUID()
         }
         let result = WebChatConversationResult(conversation: conversation, etag: response.value(forHTTPHeaderField: "ETag"), notModified: false, historyReplaced: replaced)
-        cache[key] = result
+        retain(result, for: key, bytes: data.count)
         return result
     }
 
@@ -165,6 +182,33 @@ actor WebChatService {
         return WebChatAttachment(path: upload.path, name: name)
     }
 
+    private func removeCachedAnswers(for target: WebChatTarget) {
+        for key in cache.keys.filter({ $0.target == target }) {
+            cache.removeValue(forKey: key)
+            cacheBytes -= cacheCosts.removeValue(forKey: key) ?? 0
+        }
+        cacheOrder.removeAll { $0.target == target }
+    }
+
+    private func retain(_ answer: WebChatConversationResult, for key: CacheKey, bytes: Int) {
+        cacheBytes -= cacheCosts[key] ?? 0
+        cache[key] = answer
+        cacheCosts[key] = bytes
+        cacheBytes += bytes
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+        while cache.count > cacheAnswerLimit || cacheBytes > cacheByteLimit {
+            // An active latest answer proves history/ref identity. Evict old pages first;
+            // if only latest answers remain, release the least recently used target.
+            guard let candidate = cacheOrder.first(where: { $0 != key && $0.page != .latest })
+                    ?? cacheOrder.first(where: { $0.page != .latest })
+                    ?? cacheOrder.first(where: { $0 != key }) else { break }
+            cache.removeValue(forKey: candidate)
+            cacheBytes -= cacheCosts.removeValue(forKey: candidate) ?? 0
+            cacheOrder.removeAll { $0 == candidate }
+        }
+    }
+
     private func validate(_ target: WebChatTarget) async throws {
         let machines = try await machines()
         guard let machine = machines.first(where: { $0.id == configuration.machineID }), machine.enabled,
@@ -195,8 +239,9 @@ actor WebChatService {
         if let etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
         if method != "GET" { request.setValue("1", forHTTPHeaderField: "X-Herdr-Machine") }
         if authenticated { try credential.authorize(&request) }
+        guard pending.count < pendingLimit else { throw WebChatError.server(status: 429, code: "client_request_limit") }
         let id = UUID()
-        let task = Task { try await session.data(for: request) }
+        let task = Task { try await Self.boundedResponse(session: session, request: request) }
         pending[id] = task
         defer { pending.removeValue(forKey: id) }
         let data: Data
@@ -206,6 +251,8 @@ actor WebChatService {
         } catch {
             if generation != epoch { throw WebChatError.staleResponse }
             if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+            if let error = error as? WebChatError { throw error }
+            if (error as? URLError)?.code == .appTransportSecurityRequiresSecureConnection { throw WebChatError.httpRestricted }
             throw WebChatError.transport
         }
         guard generation == epoch else { throw WebChatError.staleResponse }
@@ -213,17 +260,44 @@ actor WebChatService {
               http.url?.scheme == url.scheme, http.url?.host == url.host, http.url?.port == url.port else { throw WebChatError.unsafeRedirect }
         guard data.count <= 16 * 1024 * 1024 else { throw WebChatError.invalidResponse }
         if http.statusCode == 304 { return (data, http) }
-        guard (200...299).contains(http.statusCode) else {
-            switch http.statusCode {
-            case 300...399: throw WebChatError.unsafeRedirect
-            case 401: throw WebChatError.unauthorized
-            case 403: throw WebChatError.forbidden
-            case 409: throw WebChatError.historyChanged
-            case 404, 405: throw WebChatError.incompatible
-            default: throw WebChatError.server(status: http.statusCode, code: "request_failed")
-            }
-        }
+        if let error = Self.httpError(status: http.statusCode) { throw error }
         return (data, http)
+    }
+
+    private static func boundedResponse(session: URLSession, request: URLRequest) async throws -> (Data, URLResponse) {
+        let (bytes, response) = try await session.bytes(for: request)
+        do {
+            try Task.checkCancellation()
+            guard let expectedURL = request.url, let http = response as? HTTPURLResponse,
+                  http.url?.scheme == expectedURL.scheme, http.url?.host == expectedURL.host,
+                  http.url?.port == expectedURL.port else { throw WebChatError.unsafeRedirect }
+            // Do not read server error bodies (which may echo input or credentials).
+            if let error = httpError(status: http.statusCode) { throw error }
+            let maximum = 16 * 1024 * 1024
+            guard response.expectedContentLength <= maximum else { throw WebChatError.invalidResponse }
+            var body = Data()
+            body.reserveCapacity(Int(max(0, response.expectedContentLength)))
+            for try await byte in bytes {
+                guard body.count < maximum else { throw WebChatError.invalidResponse }
+                body.append(byte)
+            }
+            return (body, response)
+        } catch {
+            bytes.task.cancel()
+            throw error
+        }
+    }
+
+    private static func httpError(status: Int) -> WebChatError? {
+        switch status {
+        case 200...299, 304: return nil
+        case 300...399: return .unsafeRedirect
+        case 401: return .unauthorized
+        case 403: return .forbidden
+        case 409: return .historyChanged
+        case 404, 405: return .incompatible
+        default: return .server(status: status, code: "request_failed")
+        }
     }
 
     private static func isolatedSession() -> URLSession {
