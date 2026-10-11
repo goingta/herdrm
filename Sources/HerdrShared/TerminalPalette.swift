@@ -3,10 +3,10 @@ import GhosttyTerminal
 
 /// Identical terminal colors on both clients, including explicit cursor/selection.
 enum TerminalPalette {
-    static let darkBackgroundHex = "#101012"
-    static let darkForegroundHex = "#D6D6D6"
-    static let lightBackgroundHex = "#FFFFFF"
-    static let lightForegroundHex = "#3A3A3A"
+    static let darkBackgroundHex = AppPalette.background.hex(dark: true)
+    static let darkForegroundHex = AppPalette.text.hex(dark: true)
+    static let lightBackgroundHex = AppPalette.background.hex(dark: false)
+    static let lightForegroundHex = AppPalette.text.hex(dark: false)
 
     /// The 16-color ANSI palette used by Apple's Terminal.app (formerly
     /// `SwiftTerm.Color.terminalAppColors`, inlined with the renderer switch).
@@ -42,10 +42,10 @@ enum TerminalPalette {
             TerminalConfiguration { builder in
                 builder.withBackground(dark ? darkBackgroundHex : lightBackgroundHex)
                 builder.withForeground(dark ? darkForegroundHex : lightForegroundHex)
-                builder.withCursorColor(dark ? darkForegroundHex : lightForegroundHex)
+                builder.withCursorColor(AppPalette.accent.hex(dark: dark))
                 builder.withCursorText(dark ? darkBackgroundHex : lightBackgroundHex)
-                builder.withSelectionBackground(dark ? "#42424A" : "#CDD7E5")
-                builder.withSelectionForeground(dark ? "#FFFFFF" : "#242424")
+                builder.withSelectionBackground(AppPalette.selection.hex(dark: dark))
+                builder.withSelectionForeground(AppPalette.text.hex(dark: dark))
                 for (index, color) in (dark ? darkPalette : lightPalette).enumerated() {
                     builder.withPalette(index, color: String(format: "#%02X%02X%02X", color.red, color.green, color.blue))
                 }

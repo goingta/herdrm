@@ -1,32 +1,31 @@
 :root {
   color-scheme: dark;
 
-  /* surfaces (tonal steps, darkest to lightest): lamp-lit graphite, warm not tinted */
-  --bg: #12100e;
-  --bg-panel: #181613;
-  --bg-elevated: #211e1a;
-  --bg-hover: #2a2621;
-  --bg-input: #1c1916;
-  --border: #2d2924;
-  --border-strong: #3e3830;
+  /* App palette from the user's green/black/white screenshot direction. */
+  --bg: #000000;
+  --bg-panel: #111214;
+  --bg-elevated: #1b1c1e;
+  --bg-hover: #242528;
+  --bg-input: #1b1c1e;
+  --border: #2b2c30;
+  --border-strong: #3b3c40;
   /* the chat's user bubble: no edge where --bg-elevated alone parts it from --bg (the dark
      amber, report and charcoal palettes), --border where the two surfaces sit close */
   --bubble-border: transparent;
 
   /* text */
-  --text: #d8d0c3;
-  --text-dim: #9b9183;
-  --text-strong: #f2ebdf;
+  --text: #f5f5f7;
+  --text-dim: #a1a1aa;
+  --text-strong: #f5f5f7;
 
-  /* the saturated colors: ONE amber (selection, focus, cursor and the user's own
-     action - an amber-phosphor terminal) and the four agent states, none of them amber */
-  --accent: #f0a830;
-  --accent-tint: rgba(240, 168, 48, 0.13);
-  --primary: #f0a830;
-  --primary-hover: #f6bb55;
-  --primary-text: #1b1407;
-  --primary-tint: rgba(240, 168, 48, 0.16);
-  --status-idle: #9b9183;
+  /* Green app actions; semantic Agent status colors retain their established meaning. */
+  --accent: #00f000;
+  --accent-tint: rgba(0, 240, 0, 0.12);
+  --primary: #00f000;
+  --primary-hover: #25ff25;
+  --primary-text: #000000;
+  --primary-tint: rgba(0, 240, 0, 0.16);
+  --status-idle: #a1a1aa;
   --status-working: #6cb8d6;
   --status-blocked: #ff7b70;
   --status-done: #93c36b;
@@ -37,7 +36,7 @@
   --danger-text: #ffd9d4;
 
   /* overlays */
-  --scrim: rgba(8, 6, 4, 0.55);
+  --scrim: rgba(0, 0, 0, 0.55);
   --shadow-drawer: 0 0 40px rgba(0, 0, 0, 0.6);
   --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--border);
   --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.35);
@@ -47,11 +46,11 @@
      (FileViewer's .file-viewer-pdf) */
   --pdf-page: #ffffff;
 
-  /* terminal theme: mirrored verbatim in src/lib/settings.ts terminalTheme() */
-  --term-bg: #181613;
-  --term-fg: #d8d0c3;
-  --term-cursor: #f0a830;
-  --term-selection: #4a3d26;
+  /* Terminal colors match the shared native AppPalette/TerminalPalette. */
+  --term-bg: #000000;
+  --term-fg: #f5f5f7;
+  --term-cursor: #00f000;
+  --term-selection: #153d18;
 
   /* syntax highlighting (components/HighlightedCode.css): the four derived roles follow the
      palette because they are resolved on <html>, where data-theme and data-palette sit */
@@ -178,24 +177,24 @@
 
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #eeeae2;
-  --bg-panel: #faf8f3;
-  --bg-elevated: #f2eee6;
-  --bg-hover: #e8e2d6;
-  --bg-input: #fffdf9;
-  --border: #dcd4c6;
-  --border-strong: #c5baa8;
+  --bg: #ffffff;
+  --bg-panel: #f5f5f7;
+  --bg-elevated: #f0f0f2;
+  --bg-hover: #e4e4e7;
+  --bg-input: #f5f5f7;
+  --border: #d4d4d8;
+  --border-strong: #b4b4bc;
   --bubble-border: var(--border);
-  --text: #2a251f;
-  --text-dim: #685e52;
-  --text-strong: #16120d;
-  --accent: #8c5000;
-  --accent-tint: rgba(140, 80, 0, 0.1);
-  --primary: #c57d12;
-  --primary-hover: #d48c1f;
-  --primary-text: #1b1407;
-  --primary-tint: rgba(197, 125, 18, 0.14);
-  --status-idle: #685e52;
+  --text: #171719;
+  --text-dim: #52525b;
+  --text-strong: #000000;
+  --accent: #006b12;
+  --accent-tint: rgba(0, 107, 18, 0.12);
+  --primary: #00f000;
+  --primary-hover: #25ff25;
+  --primary-text: #000000;
+  --primary-tint: rgba(0, 240, 0, 0.14);
+  --status-idle: #52525b;
   --status-working: #155a72;
   --status-blocked: #a82323;
   --status-done: #2f6317;
@@ -204,14 +203,14 @@
   --status-done-tint: rgba(47, 99, 23, 0.12);
   --danger-tint: rgba(168, 35, 35, 0.1);
   --danger-text: #8f1d1d;
-  --scrim: rgba(40, 32, 22, 0.35);
-  --shadow-drawer: 0 0 40px rgba(40, 32, 22, 0.22);
-  --shadow-pop: 0 16px 48px rgba(40, 32, 22, 0.16), 0 0 0 1px var(--border);
-  --shadow-card: 0 4px 16px rgba(40, 32, 22, 0.07);
-  --term-bg: #faf8f3;
-  --term-fg: #2a251f;
-  --term-cursor: #8c5000;
-  --term-selection: #f0d9ae;
+  --scrim: rgba(0, 0, 0, 0.35);
+  --shadow-drawer: 0 0 40px rgba(0, 0, 0, 0.22);
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.16), 0 0 0 1px var(--border);
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.07);
+  --term-bg: #ffffff;
+  --term-fg: #171719;
+  --term-cursor: #006b12;
+  --term-selection: #d0f4d0;
   --syntax-keyword: #a33a17;
   --syntax-string: #4b6b18;
   --syntax-number: #8a3f7a;

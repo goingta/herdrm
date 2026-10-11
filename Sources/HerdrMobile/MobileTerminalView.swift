@@ -13,7 +13,7 @@ enum MobileGhosttyRuntime {
     /// The font/cursor settings land as a configuration override (the
     /// controller's hot-apply path), the theme at construction.
     static let controller: TerminalController = {
-        let controller = TerminalController(configSource: .none, theme: makeTheme())
+        let controller = TerminalController(configSource: .none, theme: TerminalPalette.makeTheme())
         controller.setTerminalConfiguration(makeConfiguration())
         return controller
     }()
@@ -44,22 +44,6 @@ enum MobileGhosttyRuntime {
             builder.withCustom("font-codepoint-map", "U+F0000-U+FFFFD=\(symbolFallbackFamily)")
             builder.withCustom("font-codepoint-map", "U+100000-U+10FFFD=\(symbolFallbackFamily)")
         }
-    }
-
-    private static func makeTheme() -> TerminalTheme {
-        func configuration(dark: Bool) -> TerminalConfiguration {
-            TerminalConfiguration { builder in
-                builder.withBackground(dark ? "#181613" : "#FAF8F3")
-                builder.withForeground(dark ? "#D8D0C3" : "#2A251F")
-                builder.withCursorColor(dark ? "#F0A830" : "#8C5000")
-                builder.withCursorText(dark ? "#181613" : "#FAF8F3")
-                builder.withSelectionBackground(dark ? "#4A3D26" : "#E7D4B2")
-                for (index, color) in (dark ? TerminalPalette.darkPalette : TerminalPalette.lightPalette).enumerated() {
-                    builder.withPalette(index, color: String(format: "#%02X%02X%02X", color.red, color.green, color.blue))
-                }
-            }
-        }
-        return TerminalTheme(light: configuration(dark: false), dark: configuration(dark: true))
     }
 
 }
@@ -655,7 +639,7 @@ struct MobileTerminalScreen: View {
                 Image(systemName: "return")
                     .font(.system(size: 23, weight: .medium))
                     .frame(width: 44, height: 44)
-                    .foregroundStyle(MobileReferenceTheme.background)
+                    .foregroundStyle(MobileReferenceTheme.primaryText)
                     .background(MobileReferenceTheme.primary, in: Circle())
             }
             .disabled(submitting || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -697,6 +681,7 @@ struct MobileTerminalScreen: View {
                 session.start()
             }
             .buttonStyle(.borderedProminent)
+            .tint(Theme.primary).foregroundStyle(Theme.primaryText)
         }
         .padding(24)
         .background(Theme.contentBackground.opacity(0.94), in: RoundedRectangle(cornerRadius: 14))

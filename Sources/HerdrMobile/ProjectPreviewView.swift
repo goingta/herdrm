@@ -27,6 +27,7 @@ struct ProjectPreviewView: View {
                         Button(AppLocalization.string("Open"), action: open)
                             .frame(minHeight: VisualMetrics.minimumTouchTarget)
                             .buttonStyle(.borderedProminent)
+                            .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                             .accessibilityIdentifier("preview.open")
                     }
                     Text(AppLocalization.string("Direct access · HTTP / HTTPS"))
