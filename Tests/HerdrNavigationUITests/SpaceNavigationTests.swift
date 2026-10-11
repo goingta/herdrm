@@ -2,6 +2,47 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testMoreOffersTerminalRefreshWithoutReconnectingOrDiscardingDraft() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].waitForExistence(timeout: 5))
+        app.buttons["workspace.mode.terminal"].tap()
+        let input = app.textFields["agent.composer"]
+        input.tap()
+        input.typeText("Retain terminal draft")
+        app.buttons["workspace.more"].tap()
+        let refresh = app.buttons["workspace.refresh"]
+        XCTAssertTrue(refresh.waitForExistence(timeout: 3))
+        refresh.tap()
+        XCTAssertEqual(input.value as? String, "Retain terminal draft")
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].isSelected)
+    }
+
+    @MainActor
+    func testTerminalReferenceKeyBarHasFunctionalModifierControlsAndPillComposer() {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].waitForExistence(timeout: 5))
+        app.buttons["workspace.mode.terminal"].tap()
+        let control = app.buttons["terminal.modifier.ctrl"]
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        control.tap()
+        XCTAssertTrue(control.isSelected)
+        let keys = app.scrollViews["terminal.keys"]
+        keys.swipeLeft()
+        let shift = app.buttons["terminal.modifier.shift"]
+        XCTAssertTrue(shift.isHittable)
+        shift.tap()
+        XCTAssertTrue(shift.isSelected)
+        XCTAssertTrue(app.buttons["agent.send"].exists)
+        let image = XCTAttachment(screenshot: app.screenshot())
+        image.name = "reference-terminal-pill-and-modifiers"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    @MainActor
     func testActualChatTranscriptAndComposerSurviveModeAndBottomRootSwitches() {
         continueAfterFailure = false
         let app = XCUIApplication()

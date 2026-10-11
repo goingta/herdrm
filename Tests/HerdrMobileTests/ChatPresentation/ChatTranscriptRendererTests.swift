@@ -5,6 +5,59 @@ import WebKit
 
 @MainActor
 final class ChatTranscriptRendererTests: XCTestCase {
+    func testWorkHeaderLocalizesActualDurationAndKeepsWaitingLiveDespiteEndTimestamp() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController(); window.rootViewController = host
+        renderer.webView.frame = window.bounds; host.view.addSubview(renderer.webView); window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var turn = ChatRenderTurn(role: "assistant", timestamp: "2026-10-10T12:00:00Z", parts: [.init(kind: "tool", name: "Read", output: "File")], endTimestamp: "2026-10-10T12:00:06Z")
+        var doc = ChatRenderDocument(targetKey: "pane", historyID: "history", revision: "done", source: "codex-transcript", turns: [turn], language: "zh", labels: ["workedFor":"工作了", "waiting":"需要你回应", "working":"正在工作…"])
+        renderer.present(doc)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("工作了") == true }
+        var title = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-head').innerText") as? String
+        XCTAssertTrue(title?.contains("工作了 6 秒") == true)
+        XCTAssertTrue(title?.contains("读取 1 个文件") == true)
+        turn.live = true; turn.waiting = true; doc.turns = [turn]; doc.revision = "blocked"
+        renderer.present(doc)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("需要你回应") == true }
+        title = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-title').innerText") as? String
+        XCTAssertEqual(title, "需要你回应")
+        turn.waiting = false; doc.turns = [turn]; doc.revision = "working"; renderer.present(doc)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("正在工作…") == true }
+    }
+
+    func testReferenceTurnGroupsWorkAndUsesRoleSpecificCopyControls() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        renderer.present(.init(targetKey: "pane", historyID: "history", revision: "grouped", source: "codex-transcript", turns: [
+            .init(role: "user", timestamp: "2026-10-10T12:00:00Z", parts: [.init(kind: "text", text: "Please inspect")]),
+            .init(role: "assistant", timestamp: "2026-10-10T12:00:00Z", parts: [
+                .init(kind: "thinking", text: "Inspect the source"),
+                .init(kind: "tool", name: "Read", input: "fixture.swift", output: "Safe fixture"),
+                .init(kind: "text", text: "Reading now", phase: "commentary"),
+                .init(kind: "text", text: "Final reply", phase: "final_answer")])
+        ]))
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Final reply") == true }
+        let blocks = try await renderer.webView.evaluateJavaScript("document.querySelectorAll('.work-block').length") as? Int
+        XCTAssertEqual(blocks, 1)
+        let userCopies = try await renderer.webView.evaluateJavaScript("document.querySelectorAll('.chat-turn-user .chat-meta-btn').length") as? Int
+        XCTAssertEqual(userCopies, 1)
+        let agentCopies = try await renderer.webView.evaluateJavaScript("document.querySelectorAll('.chat-turn-agent > .chat-turn-meta .chat-meta-btn').length") as? Int
+        XCTAssertEqual(agentCopies, 2)
+        let folded = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block')?.classList.contains('is-folded')") as? Bool
+        XCTAssertEqual(folded, true)
+        _ = try await renderer.webView.evaluateJavaScript("document.querySelector('.chat-turn-agent > .chat-turn-meta .chat-meta-btn').click()")
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(UIPasteboard.general.string, "Final reply")
+    }
+
     func testLatestReplyProofWaitsForLastFinalPartInViewport() async throws {
         let renderer = ChatTranscriptRenderer()
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))

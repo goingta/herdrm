@@ -2,6 +2,7 @@ import XCTest
 import HerdrKit
 import HerdrSSH
 import UIKit
+import SwiftUI
 @testable import HerdrMobile
 
 @MainActor
@@ -18,7 +19,11 @@ final class MobileChatCompletionTests: XCTestCase {
         try await checkColdCompletion(paneText: Self.reply, shouldClear: false, rebindWhileReading: true)
     }
 
-    private func checkColdCompletion(paneText: String, shouldClear: Bool, rebindWhileReading: Bool = false) async throws {
+    func testCoveredActualRootCannotAcknowledgeLateReplyUntilUncoveredFreshPresentation() async throws {
+        try await checkColdCompletion(paneText: Self.reply, shouldClear: false, coverWhileReading: true)
+    }
+
+    private func checkColdCompletion(paneText: String, shouldClear: Bool, rebindWhileReading: Bool = false, coverWhileReading: Bool = false) async throws {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let configuration = try WebChatConfiguration(serviceURL: "https://cold-chat.invalid", machineID: "local")
         let device = MobileDevice(name: "Fixture", host: "ssh-fixture.invalid", username: "developer", chatConfiguration: configuration)
@@ -27,10 +32,11 @@ final class MobileChatCompletionTests: XCTestCase {
         let readState = AgentReadState(defaults: defaults)
         let store = MobileDeviceStore(defaults: defaults)
         store.save([device])
-        let transport = CompletionSSHBoundary(paneText: paneText, delayRead: rebindWhileReading)
+        let transport = CompletionSSHBoundary(paneText: paneText, delayRead: rebindWhileReading || coverWhileReading)
         let urlConfiguration = URLSessionConfiguration.ephemeral
         urlConfiguration.protocolClasses = [CompletionHTTPBoundary.self]
         let model = MobileAppModel(store: store, readState: readState,
+            publicKeyLine: { "ssh-ed25519 fixture-public-only fixture" },
             chatCredentialProvider: { _, _ in .token("fixture-only") },
             chatServiceFactory: { config, credential in
                 WebChatService(configuration: config, credential: credential, session: URLSession(configuration: urlConfiguration))
@@ -45,17 +51,30 @@ final class MobileChatCompletionTests: XCTestCase {
         XCTAssertTrue(readState.unread.contains(key))
         let controller = try XCTUnwrap(model.chatController(for: target))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 650))
-        let host = UIViewController()
+        let host: UIViewController = coverWhileReading
+            ? UIHostingController(rootView: MobileRootView(model: model).environment(\.scenePhase, .active).environment(\.agentTabVisible, true))
+            : UIViewController()
         window.rootViewController = host
         controller.renderer.webView.frame = window.bounds
-        host.view.addSubview(controller.renderer.webView)
+        if !coverWhileReading { host.view.addSubview(controller.renderer.webView) }
         window.makeKeyAndVisible()
         defer { controller.invalidate(); window.isHidden = true }
-        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
-        await controller.refreshNow()
+        if !coverWhileReading { controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0); await controller.refreshNow() }
         for _ in 0..<150 {
             if await transport.reads > 0, !shouldClear || !readState.unread.contains(key) { break }
             try await Task.sleep(for: .milliseconds(30))
+        }
+        if coverWhileReading {
+            model.showAddDevice = true
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertEqual(controller.renderer.document?.freshContent, false, "Covered actual root must suspend chat polling and read proof")
+            XCTAssertTrue(readState.unread.contains(key), "A modal over the actual mounted chat must suppress late read acknowledgement")
+            model.showAddDevice = false
+            for _ in 0..<120 {
+                if !readState.unread.contains(key) { break }
+                try await Task.sleep(for: .milliseconds(30))
+            }
+            XCTAssertFalse(readState.unread.contains(key), "Uncovering requires fresh current presentation before read")
         }
         if rebindWhileReading {
             try model.saveChatConfiguration(.init(serviceURL: "https://replacement.invalid", machineID: "local"), for: device.id)
@@ -63,7 +82,7 @@ final class MobileChatCompletionTests: XCTestCase {
         }
         let reads = await transport.reads
         XCTAssertGreaterThan(reads, 0, "Actual fresh mounted reply must request current pane verification")
-        XCTAssertEqual(readState.unread.contains(key), !shouldClear)
+        if !coverWhileReading { XCTAssertEqual(readState.unread.contains(key), !shouldClear) }
         await model.selectedSession?.disconnect()
     }
 

@@ -17,6 +17,14 @@ actor WebChatService {
     private var pending: [UUID: Task<(Data, URLResponse), Error>] = [:]
     private var requests: [CacheKey: UUID] = [:]
     private var historyEpochs: [WebChatTarget: UUID] = [:]
+    private struct ResourceReference: Hashable { let target: WebChatTarget; let history: String; let ref: String; let image: Bool }
+    // Retain only authorization provenance, independently of evictable page bodies.
+    // The renderer bounds loaded history too; opaque refs never become arbitrary paths.
+    private var authorizedReferences: Set<ResourceReference> = []
+    private var referenceOrder: [ResourceReference] = []
+    private let referenceLimit = 8192
+    private let referenceByteLimit = 1024 * 1024
+    private var referenceBytes = 0
 
     init(configuration: WebChatConfiguration, credential: WebChatCredential, session: URLSession? = nil) {
         self.configuration = configuration
@@ -32,6 +40,9 @@ actor WebChatService {
         cacheBytes = 0
         requests.removeAll()
         historyEpochs.removeAll()
+        authorizedReferences.removeAll()
+        referenceOrder.removeAll()
+        referenceBytes = 0
         pending.values.forEach { $0.cancel() }
         pending.removeAll()
     }
@@ -120,14 +131,7 @@ actor WebChatService {
         let current = try await conversation(for: target)
         guard generation == epoch else { throw WebChatError.staleResponse }
         guard current.conversation.historyID == historyID else { throw WebChatError.historyChanged }
-        let parts = cache.filter { $0.key.target == target && $0.value.conversation.historyID == historyID }.values.flatMap { $0.conversation.turns.flatMap(\.parts) }
-        let known = parts.contains { part in
-            switch part {
-            case .image(let value): return image && value.ref == ref
-            case .tool(let value): return image ? (value.images?.contains { $0.ref == ref } == true) : value.outputRef == ref
-            default: return false
-            }
-        }
+        let known = authorizedReferences.contains(ResourceReference(target: target, history: historyID, ref: ref, image: image))
         guard known else { throw WebChatError.targetMismatch }
         let path = image ? "pane/conversation/image" : "pane/conversation/tool-output"
         let response = try await request(path: machinePath(path), query: [URLQueryItem(name: "pane_id", value: target.paneID), URLQueryItem(name: "ref", value: ref)])
@@ -183,6 +187,9 @@ actor WebChatService {
     }
 
     private func removeCachedAnswers(for target: WebChatTarget) {
+        authorizedReferences = authorizedReferences.filter { $0.target != target }
+        referenceOrder.removeAll { $0.target == target }
+        referenceBytes = referenceOrder.reduce(0) { $0 + $1.ref.utf8.count + $1.history.utf8.count }
         for key in cache.keys.filter({ $0.target == target }) {
             cache.removeValue(forKey: key)
             cacheBytes -= cacheCosts.removeValue(forKey: key) ?? 0
@@ -191,6 +198,30 @@ actor WebChatService {
     }
 
     private func retain(_ answer: WebChatConversationResult, for key: CacheKey, bytes: Int) {
+        if let history = answer.conversation.historyID {
+            for part in answer.conversation.turns.flatMap(\.parts) {
+                var refs: [(String, Bool)] = []
+                switch part {
+                case .image(let value): refs.append((value.ref, true))
+                case .tool(let value):
+                    refs += (value.images ?? []).map { ($0.ref, true) }
+                    if let ref = value.outputRef { refs.append((ref, false)) }
+                default: break
+                }
+                for (ref, image) in refs {
+                    let item = ResourceReference(target: key.target, history: history, ref: ref, image: image)
+                    if authorizedReferences.insert(item).inserted {
+                        referenceOrder.append(item)
+                        referenceBytes += ref.utf8.count + history.utf8.count
+                    }
+                }
+            }
+            while referenceOrder.count > referenceLimit || referenceBytes > referenceByteLimit {
+                let evicted = referenceOrder.removeFirst()
+                authorizedReferences.remove(evicted)
+                referenceBytes -= evicted.ref.utf8.count + evicted.history.utf8.count
+            }
+        }
         cacheBytes -= cacheCosts[key] ?? 0
         cache[key] = answer
         cacheCosts[key] = bytes

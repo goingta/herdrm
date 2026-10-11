@@ -7,6 +7,52 @@ import HerdrSSH
 
 @MainActor
 final class AppearanceTests: XCTestCase {
+    func testReferenceModifiersSendRealNamedChordsAndStopWhenCovered() async throws {
+        let boundary = KeyRefreshBoundary()
+        let session = MobileAttachSession(transport: boundary, target: .agent(paneID: "keys"), paneID: "keys")
+        session.toggleModifier("ctrl")
+        session.toggleModifier("alt")
+        session.sendKey("up")
+        XCTAssertTrue(session.sendModifiedKeyboardText("C"))
+        XCTAssertFalse(session.sendModifiedKeyboardText("中文"))
+        try await settle()
+        let observedSentkeys = await boundary.sentKeys
+        XCTAssertEqual(observedSentkeys, ["ctrl+alt+up", "ctrl+alt+c"])
+        session.presentationVisible = false
+        session.sendKey("enter")
+        try await settle()
+        let observedSentkeyscount = await boundary.sentKeys.count
+        XCTAssertEqual(observedSentkeyscount, 2)
+    }
+
+    func testExplicitRefreshVerifiesPaneAndRetainsMountedTerminalWithoutAnotherAttach() async throws {
+        let boundary = KeyRefreshBoundary()
+        let session = MobileAttachSession(transport: boundary, target: .agent(paneID: "refresh"), paneID: "refresh")
+        let view = UITerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 500))
+        view.controller = MobileGhosttyRuntime.controller
+        view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController(); host.view = view; window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; session.stop() }
+        session.terminal.receive(Data("HELD_REFRESH_FRAME\r\n".utf8))
+        try await settle()
+        let before = session.terminal.readViewportText()
+        let existingOpens = await boundary.opens
+        await session.refreshScreen()
+        let observedReads = await boundary.reads
+        XCTAssertEqual(observedReads, 1)
+        let observedOpens = await boundary.opens
+        XCTAssertEqual(observedOpens, existingOpens)
+        XCTAssertEqual(session.displayRefreshRevision, 1)
+        XCTAssertEqual(session.terminal.readViewportText(), before)
+        session.presentationVisible = false
+        await session.refreshScreen()
+        let coveredReads = await boundary.reads
+        XCTAssertEqual(coveredReads, 1)
+    }
+
     func testConnectionDefiningEditCannotReusePreviousHostsRendererWithSameRemoteIDs() async throws {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let device = MobileDevice(name: "Daily", host: "prior.example", username: "alice")
@@ -236,5 +282,19 @@ private actor DelayedAttachTransport: MobileTransport {
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
         try await withCheckedThrowingContinuation { pending = $0 }
     }
+    func close() async {}
+}
+
+private actor KeyRefreshBoundary: MobileTransport {
+    var sentKeys: [String] = []
+    var reads = 0
+    var opens = 0
+    func request(method: String, params: JSONValue) async throws -> JSONValue {
+        if method == "pane.read" { reads += 1; return .object(["read": .object(["text": .string("HELD_REFRESH_FRAME")])]) }
+        if method == "pane.send_input", let keys = params["keys"]?.arrayValue { sentKeys += keys.compactMap(\.stringValue) }
+        return .null
+    }
+    nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
+    func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel { opens += 1; throw CancellationError() }
     func close() async {}
 }

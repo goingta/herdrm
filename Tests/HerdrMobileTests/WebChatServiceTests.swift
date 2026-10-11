@@ -77,6 +77,30 @@ final class WebChatServiceTests: XCTestCase {
         XCTAssertEqual(credential, .pairedDevice("fixture-paired"))
     }
 
+    func testLoadedOlderImageRemainsAuthorizedAfterPageCachePressureButNotHistoryReplacement() async throws {
+        var history = "history-a"
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            if request.url?.path == "/api/pane/conversation/image" {
+                return (200, ["Content-Type": "image/png"], Data([137, 80, 78, 71]))
+            }
+            let first = request.url?.query?.contains("before=first") == true
+            let turns = first ? "[{\"role\":\"user\",\"ts\":null,\"parts\":[{\"kind\":\"image\",\"media_type\":\"image/png\",\"ref\":\"older-image\"}]}]" : "[]"
+            return (200, [:], Data("{\"source\":\"claude-transcript\",\"history_id\":\"\(history)\",\"turns\":\(turns)}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        _ = try await service.conversation(for: Self.target, page: .before("first"))
+        for index in 0..<35 { _ = try await service.conversation(for: Self.target, page: .before("page-\(index)")) }
+        let image = try await service.image(for: Self.target, ref: "older-image", historyID: "history-a")
+        XCTAssertEqual(image.data, Data([137, 80, 78, 71]))
+        do { _ = try await service.image(for: Self.target, ref: "arbitrary", historyID: "history-a"); XCTFail("Unknown ref must not load") }
+        catch { XCTAssertEqual(error as? WebChatError, .targetMismatch) }
+        history = "history-b"
+        do { _ = try await service.image(for: Self.target, ref: "older-image", historyID: "history-a"); XCTFail("Old history ref must not load") }
+        catch { XCTAssertEqual(error as? WebChatError, .historyChanged) }
+    }
+
     func testImageAndToolOutputStayInsideValidatedCurrentHistory() async throws {
         let session = fixtureSession { request in
             switch request.url?.path {

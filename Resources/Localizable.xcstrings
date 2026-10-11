@@ -4410,7 +4410,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This device no longer exists. Reopen its settings."
+            "value": "This development machine no longer exists. Reopen its settings."
           }
         },
         "zh-Hans": {
@@ -4427,7 +4427,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a password for this device."
+            "value": "Enter a password for this development machine."
           }
         },
         "zh-Hans": {
@@ -4631,7 +4631,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could Not Remove Device"
+            "value": "Could Not Remove Development Machine"
           }
         },
         "zh-Hans": {
@@ -4835,7 +4835,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could Not Save Device"
+            "value": "Could Not Save Development Machine"
           }
         },
         "zh-Hans": {
@@ -6422,6 +6422,118 @@
           "stringUnit": {
             "state": "translated",
             "value": "请使用 HTTPS；iOS 的网络安全设置阻止了此 HTTP 服务。"
+          }
+        }
+      }
+    },
+    "Could Not Refresh Terminal": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could Not Refresh Terminal"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端刷新失败"
+          }
+        }
+      }
+    },
+    "Chat Service: Not Configured": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Not Configured"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：未配置"
+          }
+        }
+      }
+    },
+    "Chat Service: Sign In Required": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Sign In Required"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：需要登录"
+          }
+        }
+      }
+    },
+    "Chat Service: Loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Loading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：正在加载"
+          }
+        }
+      }
+    },
+    "Chat Service: Up to Date": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Up to Date"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：已更新"
+          }
+        }
+      }
+    },
+    "Chat Service: Paused": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Paused"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：已暂停"
+          }
+        }
+      }
+    },
+    "Chat Service: Terminal Fallback": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat Service: Terminal Fallback"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聊天服务：终端回滚内容"
           }
         }
       }

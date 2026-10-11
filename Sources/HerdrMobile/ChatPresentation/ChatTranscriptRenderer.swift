@@ -14,6 +14,7 @@ struct ChatRenderPart: Codable, Equatable {
     var input: String? = nil
     var output: String? = nil
     var ref: String? = nil
+    var error: Bool? = nil
 }
 
 struct ChatRenderTurn: Codable, Equatable {
@@ -21,6 +22,9 @@ struct ChatRenderTurn: Codable, Equatable {
     var timestamp: String?
     var parts: [ChatRenderPart]
     var key: String? = nil
+    var endTimestamp: String? = nil
+    var live = false
+    var waiting = false
 }
 
 struct ChatRenderDocument: Codable, Equatable {

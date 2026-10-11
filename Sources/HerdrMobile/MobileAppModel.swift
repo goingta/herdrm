@@ -590,12 +590,20 @@ final class MobileAppModel {
         }
         return .acknowledged
     }
+    private(set) var terminalRefreshRevision: UInt64 = 0
+
+    func refreshTerminal() {
+        guard selectedTransportReady, !selectedTargetUnavailable else { return }
+        terminalRefreshRevision &+= 1
+    }
+
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
     let agentReadState: AgentReadState
     private let store: MobileDeviceStore
     private let connector: MobileTransportConnector
+    private let publicKeyLine: () -> String
     let chatCredentialProvider: (WebChatConfiguration, UUID) -> WebChatCredential?
     let chatServiceFactory: (WebChatConfiguration, WebChatCredential) -> WebChatService
     private let chatCredentialRemover: (WebChatConfiguration, UUID) throws -> Void
@@ -614,6 +622,7 @@ final class MobileAppModel {
     }
 
     init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil,
+         publicKeyLine: @escaping () -> String = { DeviceKey.authorizedKeysLine(DeviceKey.ensure()) },
          chatCredentialProvider: @escaping (WebChatConfiguration, UUID) -> WebChatCredential? = {
              WebChatSecretStore.credential(for: $0, nativeDeviceID: $1)
          },
@@ -629,6 +638,7 @@ final class MobileAppModel {
         agentReadState = readState ?? AgentReadState()
         self.store = store ?? MobileDeviceStore()
         self.connector = connector
+        self.publicKeyLine = publicKeyLine
         self.chatServiceFactory = chatServiceFactory
         self.chatCredentialProvider = chatCredentialProvider
         self.chatCredentialRemover = chatCredentialRemover
@@ -640,7 +650,7 @@ final class MobileAppModel {
         for agent in agents {
             let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)
             for (controllerKey, controller) in chatControllers where controllerKey.target.nativeDeviceID == deviceID && controllerKey.target.paneID == agent.paneID {
-                controller.observeAgentWorking(agent.status == .working)
+                controller.observeAgentStatus(agent.status.rawValue)
             }
             if let previous = completionStatuses[key], previous != .done, agent.status == .done {
                 completionRevisions[key, default: 0] &+= 1
@@ -869,7 +879,7 @@ final class MobileAppModel {
 
     /// The line to enroll on a Mac: `echo '<line>' >> ~/.ssh/authorized_keys`.
     var deviceKeyAuthorizedLine: String {
-        DeviceKey.authorizedKeysLine(DeviceKey.ensure())
+        publicKeyLine()
     }
 
     /// This install's tailcat client public key ("nodekey:…") for a host's

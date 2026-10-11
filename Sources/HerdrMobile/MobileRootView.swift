@@ -10,6 +10,9 @@ struct MobileRootView: View {
     @State private var drawerShown = false
     @State private var restorationHintVisible = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.agentTabVisible) private var rootVisible
+
+    private var contentVisible: Bool { rootVisible && !drawerShown && chatDevice == nil && !model.showAddDevice && model.editingDevice == nil }
 
     var body: some View {
         NavigationStack {
@@ -19,6 +22,9 @@ struct MobileRootView: View {
                     VStack(spacing: 0) {
                         if !model.workspaceTabs.isEmpty { tabStrip }
                         terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .environment(\.agentTabVisible, contentVisible)
+                            .allowsHitTesting(contentVisible)
+                            .accessibilityHidden(!contentVisible)
                             .overlay(alignment: .top) {
                                 if model.hasCurrentSnapshot, !model.selectedTransportReady, shouldShowRestorationHint {
                                     restorationBanner
@@ -94,10 +100,15 @@ struct MobileRootView: View {
                     Text(device.name)
                     if let space = model.selectedSpace { Text(space.label) }
                     Button(AppLocalization.string("Chat Service")) { chatDevice = device }
-                    if model.paneMode == .chat, let target = model.currentPromptTarget {
-                        Button(AppLocalization.string("Refresh")) { model.chatController(for: target)?.refresh() }
+                    Button(AppLocalization.string("Refresh")) {
+                        if model.paneMode == .chat, let target = model.currentPromptTarget {
+                            model.chatController(for: target)?.refresh()
+                        } else { model.refreshTerminal() }
                     }
+                    .accessibilityIdentifier("workspace.refresh")
+                    .disabled(model.paneMode == .terminal ? !model.selectedTransportReady : model.currentPromptTarget.flatMap { model.chatController(for: $0) } == nil)
                     Text(connectionLabel)
+                    Text(chatServiceStatus)
                     Button(AppLocalization.string("Edit Device")) { model.editingDevice = device }
                 }
                 Button(AppLocalization.string("Reconnect")) { model.resumeSelected() }
@@ -270,7 +281,7 @@ struct MobileRootView: View {
                     .id(MobilePaneContext(target))
             }
         } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
-            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady)
+            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady, refreshRevision: model.terminalRefreshRevision)
                 .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if model.spaces.isEmpty {
             stateView("No Spaces", detail: AppLocalization.string("No existing workspace is available on this development machine."), symbol: "folder")
@@ -315,6 +326,19 @@ struct MobileRootView: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityIdentifier("workspace.connection-state")
+    }
+
+    private var chatServiceStatus: String {
+        guard model.selectedDevice?.chatConfiguration != nil else { return AppLocalization.string("Chat Service: Not Configured") }
+        guard let target = model.currentPromptTarget, let controller = model.chatController(for: target) else {
+            return AppLocalization.string("Chat Service: Sign In Required")
+        }
+        switch controller.state {
+        case .loading: return AppLocalization.string("Chat Service: Loading")
+        case .ready: return AppLocalization.string(controller.renderer.document?.freshContent == true ? "Chat Service: Up to Date" : "Chat Service: Paused")
+        case .degraded: return AppLocalization.string("Chat Service: Terminal Fallback")
+        case .failed(let error): return AppLocalization.string("Chat Service") + ": " + error.localizedDescription
+        }
     }
 
     private var connectionLabel: String {

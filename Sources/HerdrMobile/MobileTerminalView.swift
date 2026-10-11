@@ -82,6 +82,9 @@ final class MobileAttachSession: ObservableObject {
     }
 
     @Published var status: Status = .connecting
+    @Published var stickyModifiers: Set<String> = []
+    @Published private(set) var displayRefreshRevision: UInt64 = 0
+    @Published private(set) var refreshFailed = false
     private(set) var transport: MobileTransport
     let target: TerminalAttachTarget
 
@@ -348,13 +351,57 @@ final class MobileAttachSession: ObservableObject {
         didSet { if !presentationVisible { hidePresentedContent() } }
     }
 
+    /// Verify the current pane, then redraw the held surface. The attach and draft stay intact.
+    func refreshScreen() async {
+        guard transportReady, presentationVisible else { return }
+        let currentTransport = transport
+        let attempt = attachAttempt
+        let epoch = presentationEpoch
+        do {
+            let response = try await currentTransport.request(method: "pane.read", params: .object([
+                "pane_id": .string(paneID), "source": .string("visible"), "format": .string("ansi")
+            ]))
+            guard transport === currentTransport, attachAttempt == attempt, presentationEpoch == epoch,
+                  transportReady, presentationVisible else { return }
+            guard response["read"]?["text"]?.stringValue != nil else { throw CancellationError() }
+            refreshFailed = false
+            displayRefreshRevision &+= 1
+        } catch {
+            guard transport === currentTransport, attachAttempt == attempt, presentationEpoch == epoch,
+                  transportReady, presentationVisible else { return }
+            refreshFailed = true
+        }
+    }
+
+    func toggleModifier(_ modifier: String) {
+        guard ["ctrl", "alt", "shift"].contains(modifier) else { return }
+        if stickyModifiers.contains(modifier) { stickyModifiers.remove(modifier) } else { stickyModifiers.insert(modifier) }
+    }
+
+    /// Named keys preserve all modifier bits in the remote pane keyboard protocol.
+    func sendKey(_ key: String) {
+        let prefix = ["ctrl", "alt", "shift"].filter { stickyModifiers.contains($0) }
+        sendKeys([(prefix + [key]).joined(separator: "+")])
+    }
+
+    /// Intercept only a committed ASCII key; composed text and pasted messages remain text.
+    func sendModifiedKeyboardText(_ text: String) -> Bool {
+        guard !stickyModifiers.isEmpty, text.unicodeScalars.count == 1,
+              let scalar = text.unicodeScalars.first, scalar.value < 128 else { return false }
+        let key: String
+        switch text { case "\r", "\n": key = "enter"; case "\t": key = "tab"; case " ": key = "space"; default: key = text.lowercased() }
+        sendKey(key)
+        return true
+    }
+
     /// Sends named keys through herdr's RPC — proper terminal encoding without
     /// this client knowing the pane's keyboard protocol state.
     func sendKeys(_ keys: [String]) {
-        guard transportReady else { return }
+        guard transportReady, presentationVisible else { return }
+        let sendingTransport = transport
         Task {
-            guard transportReady else { return }
-            _ = try? await transport.request(
+            guard transportReady, presentationVisible, transport === sendingTransport else { return }
+            _ = try? await sendingTransport.request(
                 method: "pane.send_input",
                 params: .object([
                     "pane_id": .string(paneID),
@@ -437,6 +484,7 @@ struct MobileTerminalScreen: View {
     @StateObject private var session: MobileAttachSession
     @State private var composerText = ""
     private let composerDraft: Binding<String>?
+    private let submitPrompt: (() async -> MobilePromptResult)?
     @State private var keyboardShown = false
     @State private var submitting = false
     @State private var promptError = false
@@ -444,12 +492,15 @@ struct MobileTerminalScreen: View {
     private let title: String
     private let transport: MobileTransport
     private let transportReady: Bool
+    private let refreshRevision: UInt64
     @Environment(\.agentTabVisible) private var agentTabVisible
     private let readState: AgentReadState?
     private let unreadKey: AgentUnreadKey?
     private let onReadStateChanged: () -> Void
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true, submitPrompt: (() async -> MobilePromptResult)? = nil, refreshRevision: UInt64 = 0) {
+        self.refreshRevision = refreshRevision
+        self.submitPrompt = submitPrompt
         self.transport = transport
         self.transportReady = transportReady
         self.readState = readState
@@ -467,7 +518,10 @@ struct MobileTerminalScreen: View {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
-                if agentTabVisible { controls.disabled(!transportReady) }
+                if agentTabVisible {
+                    if session.refreshFailed { Text(AppLocalization.string("Could Not Refresh Terminal")).font(.caption).foregroundStyle(MobileReferenceTheme.dim).padding(6) }
+                    controls.disabled(!transportReady)
+                }
             }
             if transportReady, case .ended(let reason) = session.status {
                 endedOverlay(reason)
@@ -492,6 +546,7 @@ struct MobileTerminalScreen: View {
             if case .ended = session.status { session.stop() }
             session.start()
         }
+        .onChange(of: refreshRevision) { _, _ in Task { await session.refreshScreen() } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
         .onChange(of: agentTabVisible) { _, value in
             session.presentationVisible = value
@@ -518,26 +573,32 @@ struct MobileTerminalScreen: View {
 
     private var keyBar: some View {
         ScrollView(.horizontal) {
-          HStack(spacing: 8) {
-            KeyChip("esc", accessibilityLabel: AppLocalization.string("Escape")) { session.sendKeys(["esc"]) }
-            KeyChip("tab", accessibilityLabel: AppLocalization.string("Tab")) { session.sendKeys(["tab"]) }
-            KeyChip("↑", accessibilityLabel: AppLocalization.string("Move Up")) { session.sendKeys(["up"]) }
-            KeyChip("↓", accessibilityLabel: AppLocalization.string("Move Down")) { session.sendKeys(["down"]) }
-            KeyChip("⏎", accessibilityLabel: AppLocalization.string("Enter")) { session.sendKeys(["enter"]) }
-            KeyChip("^C", accessibilityLabel: AppLocalization.string("Interrupt (Control-C)")) { session.sendKeys(["ctrl+c"]) }
-            Button {
-                keyboardShown.toggle()
-            } label: {
-                Image(systemName: keyboardShown ? "keyboard.chevron.compact.down" : "keyboard")
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 44, height: 44)
-                    .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
+            HStack(spacing: 5) {
+                Button { keyboardShown.toggle() } label: {
+                    Image(systemName: keyboardShown ? "keyboard.chevron.compact.down" : "keyboard")
+                        .frame(width: 44, height: 44)
+                        .background(MobileReferenceTheme.input, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(MobileReferenceTheme.border))
+                }
+                .accessibilityIdentifier("agent.keyboard")
+                .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
+                KeyChip("Esc", accessibilityLabel: AppLocalization.string("Escape")) { session.sendKey("esc") }
+                KeyChip("Tab", accessibilityLabel: AppLocalization.string("Tab")) { session.sendKey("tab") }
+                ForEach(["ctrl", "alt", "shift"], id: \.self) { key in
+                    KeyChip(key.capitalized, accessibilityLabel: key.capitalized, pressed: session.stickyModifiers.contains(key)) { session.toggleModifier(key) }
+                        .accessibilityIdentifier("terminal.modifier.\(key)")
+                        .accessibilityAddTraits(session.stickyModifiers.contains(key) ? [.isSelected] : [])
+                }
+                KeyChip("Enter", accessibilityLabel: AppLocalization.string("Enter")) { session.sendKey("enter") }
+                KeyChip("↑", accessibilityLabel: AppLocalization.string("Move Up")) { session.sendKey("up") }
+                KeyChip("↓", accessibilityLabel: AppLocalization.string("Move Down")) { session.sendKey("down") }
+                KeyChip("←", accessibilityLabel: AppLocalization.string("Move Left")) { session.sendKey("left") }
+                KeyChip("→", accessibilityLabel: AppLocalization.string("Move Right")) { session.sendKey("right") }
             }
-            .accessibilityIdentifier("agent.keyboard")
-            .accessibilityLabel(keyboardShown ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Show Keyboard"))
-          }
         }
+        .foregroundStyle(MobileReferenceTheme.dim)
         .scrollIndicators(.hidden)
+        .accessibilityIdentifier("terminal.keys")
     }
 
     private var composer: some View {
@@ -551,23 +612,24 @@ struct MobileTerminalScreen: View {
             .textFieldStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 10))
+            .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(MobileReferenceTheme.border))
+            .frame(minHeight: 44)
             .foregroundStyle(Theme.text)
             .tint(Theme.accent)
             .accessibilityIdentifier("agent.composer")
             .onSubmit(sendPrompt)
 
             Button(action: sendPrompt) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .foregroundStyle(
-                        draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? Theme.textGhost : Theme.accent
-                    )
+                Image(systemName: "return")
+                    .font(.system(size: 23, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(MobileReferenceTheme.background)
+                    .background(MobileReferenceTheme.primary, in: Circle())
             }
             .disabled(submitting || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel(AppLocalization.string("Send Prompt"))
+            .accessibilityIdentifier("agent.send")
         }
     }
 
@@ -580,8 +642,13 @@ struct MobileTerminalScreen: View {
         Task {
             defer { submitting = false }
             do {
-                try await session.prompt(text)
-                if draft.wrappedValue == original { draft.wrappedValue = "" }
+                if let submitPrompt {
+                    let result = await submitPrompt()
+                    promptError = result != .acknowledged
+                } else {
+                    try await session.prompt(text)
+                    if draft.wrappedValue == original { draft.wrappedValue = "" }
+                }
             } catch { promptError = true }
         }
     }
@@ -609,6 +676,11 @@ struct MobileTerminalScreen: View {
 /// hardware keyboard attached (iPad), the tap still claims first responder
 /// so keystrokes land; iOS then shows only the accessory bar.
 private final class MobileGhosttyTerminalView: UITerminalView {
+    var modifiedKeyboardText: ((String) -> Bool)?
+    override func insertText(_ text: String) {
+        if modifiedKeyboardText?(text) == true { return }
+        super.insertText(text)
+    }
     override func toggleSoftwareKeyboard() {
         if GCKeyboard.coalesced != nil {
             _ = becomeFirstResponder()
@@ -629,6 +701,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
         view.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
         session.setLightColorsEnabled(colorScheme == .light)
         MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
+        view.modifiedKeyboardText = { [weak session] in session?.sendModifiedKeyboardText($0) ?? false }
         view.controller = MobileGhosttyRuntime.controller
         view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
         context.coordinator.observeKeyboard(for: view)
@@ -646,6 +719,10 @@ private struct MobileTerminalHost: UIViewRepresentable {
         MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
         session.setLightColorsEnabled(colorScheme == .light)
         session.presentationVisible = presentationVisible
+        if context.coordinator.refreshRevision != session.displayRefreshRevision {
+            context.coordinator.refreshRevision = session.displayRefreshRevision
+            uiView.setSurfaceVisible(false)
+        }
         uiView.setSurfaceVisible(presentationVisible)
         if keyboardShown && presentationVisible && UIApplication.shared.applicationState == .active {
             uiView.acquireProgrammaticFocus()
@@ -666,6 +743,7 @@ private struct MobileTerminalHost: UIViewRepresentable {
     /// outside the toolbar button (interactive dismiss, hardware attach).
     final class Coordinator: NSObject {
         var keyboardShown: Binding<Bool>
+        var refreshRevision: UInt64 = 0
         weak var view: MobileGhosttyTerminalView?
         weak var session: MobileAttachSession?
         nonisolated(unsafe) private var presentationTimer: Timer?
@@ -732,10 +810,12 @@ private struct KeyChip: View {
     let label: String
     let accessibilityLabel: String
     let action: () -> Void
+    let pressed: Bool
 
-    init(_ label: String, accessibilityLabel: String, action: @escaping () -> Void) {
+    init(_ label: String, accessibilityLabel: String, pressed: Bool = false, action: @escaping () -> Void) {
         self.label = label
         self.accessibilityLabel = accessibilityLabel
+        self.pressed = pressed
         self.action = action
     }
 
@@ -743,10 +823,11 @@ private struct KeyChip: View {
         Button(action: action) {
             Text(label)
                 .font(.callout.monospaced().weight(.medium))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(minWidth: 44)
+                .foregroundStyle(pressed ? MobileReferenceTheme.accent : MobileReferenceTheme.dim)
+                .frame(minWidth: 50)
                 .frame(minHeight: 44)
-                .background(Theme.itemWash, in: RoundedRectangle(cornerRadius: 7))
+                .background(MobileReferenceTheme.input, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(pressed ? MobileReferenceTheme.accent : MobileReferenceTheme.border))
         }
         .accessibilityLabel(accessibilityLabel)
     }
