@@ -10,6 +10,7 @@ actor WebChatService {
     private var cache: [CacheKey: WebChatConversationResult] = [:]
     private var pending: [UUID: Task<(Data, URLResponse), Error>] = [:]
     private var requests: [CacheKey: UUID] = [:]
+    private var historyEpochs: [WebChatTarget: UUID] = [:]
 
     init(configuration: WebChatConfiguration, credential: WebChatCredential, session: URLSession? = nil) {
         self.configuration = configuration
@@ -21,6 +22,7 @@ actor WebChatService {
         generation = UUID()
         cache.removeAll()
         requests.removeAll()
+        historyEpochs.removeAll()
         pending.values.forEach { $0.cancel() }
         pending.removeAll()
     }
@@ -36,6 +38,10 @@ actor WebChatService {
         let epoch = generation
         let key = CacheKey(target: target, page: page)
         let serial = UUID()
+        let historyEpoch = historyEpochs[target] ?? UUID()
+        historyEpochs[target] = historyEpoch
+        let expectedHistory = cache[CacheKey(target: target, page: .latest)]?.conversation.historyID
+        if page != .latest, expectedHistory == nil { throw WebChatError.historyChanged }
         requests[key] = serial
         try await validate(target)
         guard generation == epoch, requests[key] == serial else { throw WebChatError.staleResponse }
@@ -46,16 +52,30 @@ actor WebChatService {
         case .from(let cursor): query.append(URLQueryItem(name: "from", value: cursor))
         }
         let previous = cache[key]
-        let (data, response) = try await request(path: machinePath("pane/conversation"), query: query, etag: previous?.etag)
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            (data, response) = try await request(path: machinePath("pane/conversation"), query: query, etag: previous?.etag)
+        } catch WebChatError.historyChanged {
+            cache = cache.filter { $0.key.target != target }
+            historyEpochs[target] = UUID()
+            requests = requests.filter { $0.key.target != target }
+            throw WebChatError.historyChanged
+        }
         guard generation == epoch, requests[key] == serial else { throw WebChatError.staleResponse }
+        guard page == .latest || historyEpochs[target] == historyEpoch else { throw WebChatError.historyChanged }
         if response.statusCode == 304 {
             guard let previous else { throw WebChatError.invalidResponse }
             return WebChatConversationResult(conversation: previous.conversation, etag: previous.etag, notModified: true, historyReplaced: false)
         }
         guard let conversation = try? JSONDecoder().decode(WebChatConversation.self, from: data) else { throw WebChatError.incompatible }
-        let oldHistory = cache.first { $0.key.target == target }?.value.conversation.historyID
+        if page != .latest, conversation.historyID != expectedHistory { throw WebChatError.historyChanged }
+        let oldHistory = cache[CacheKey(target: target, page: .latest)]?.conversation.historyID
         let replaced = oldHistory != nil && oldHistory != conversation.historyID
-        if replaced { cache = cache.filter { $0.key.target != target } }
+        if replaced {
+            cache = cache.filter { $0.key.target != target }
+            historyEpochs[target] = UUID()
+        }
         let result = WebChatConversationResult(conversation: conversation, etag: response.value(forHTTPHeaderField: "ETag"), notModified: false, historyReplaced: replaced)
         cache[key] = result
         return result
@@ -153,7 +173,7 @@ actor WebChatService {
 
     private func machinePath(_ path: String) -> String {
         if configuration.machineID == "local" { return "api/\(path)" }
-        let id = configuration.machineID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        let id = configuration.machineID.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")) ?? ""
         return "api/machines/\(id)/\(path)"
     }
 
