@@ -32,6 +32,27 @@ enum Theme {
         #endif
     }
 
+    #if os(iOS)
+    // Mobile-only reference palette, herdr-web-ui styles.css (MIT © 2026 devswha).
+    static let text = dynamic(hex(0x2A251F), hex(0xD8D0C3))
+    static let textSecondary = dynamic(hex(0x685E52), hex(0x9B9183))
+    static let textTertiary = textSecondary
+    static let textGhost = dynamic(hex(0x9B9183), hex(0x685E52))
+    static let accent = dynamic(hex(0x8C5000), hex(0xF0A830))
+    static let accentWash = dynamic(hex(0x8C5000, alpha: 0.10), hex(0xF0A830, alpha: 0.13))
+    static let working = dynamic(hex(0x155A72), hex(0x6CB8D6))
+    static let success = dynamic(hex(0x2F6317), hex(0x93C36B))
+    static let warning = dynamic(hex(0xA82323), hex(0xFF7B70))
+    static let statsAccount = dynamic(hex(0x3F9A7A), hex(0xB5EAD7))
+    static let danger = warning
+    static let itemWash = dynamic(hex(0xE8E2D6), hex(0x2A2621))
+    static let itemWashSelected = dynamic(hex(0xF2EEE6), hex(0x211E1A))
+    static let contentBackground = dynamic(hex(0xEEEAE2), hex(0x12100E))
+    static let terminalBackground = dynamic(hex(0xFAF8F3), hex(0x181613))
+    static let statusBarBackground = terminalBackground
+    static let sidebarBorder = dynamic(hex(0xDCD4C6), hex(0x2D2924))
+    static let hairline = sidebarBorder
+    #else
     // text ramp
     static let text = dynamic(hex(0x242424), hex(0xE2E2E2))
     static let textSecondary = dynamic(hex(0x666666), hex(0xA3A3A3))
@@ -56,6 +77,8 @@ enum Theme {
     static let statusBarBackground = dynamic(hex(0xF1F1F2), hex(0x141416))
     static let sidebarBorder = dynamic(hex(0xD9D9D9), hex(0x292929))
     static let hairline = dynamic(hex(0x000000, alpha: 0.08), hex(0xFFFFFF, alpha: 0.06))
+
+    #endif
 
     /// Distinct tints for device chips (deliberately avoids the status colors).
     static let devicePalette: [Color] = [

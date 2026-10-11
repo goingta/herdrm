@@ -23,6 +23,19 @@ struct MobilePaneChoice: Identifiable {
     let agent: AgentInfo?
 }
 
+enum MobilePaneMode: String { case chat, terminal }
+
+struct MobilePromptTarget: Hashable {
+    let deviceID: UUID
+    let presentationID: UUID
+    let connectionID: UUID
+    let spaceID: String
+    let tabID: String
+    let paneID: String
+}
+
+enum MobilePromptResult: Equatable { case acknowledged, failed, targetChanged, unavailable, busy }
+
 /// One device's live herdr view: transport + snapshot + event pump.
 @MainActor
 final class MobileDeviceSession {
@@ -390,6 +403,55 @@ final class MobileAppModel {
     var showAddDevice = false
     var editingDevice: MobileDevice?
     private var agentDrafts: [AgentUnreadKey: String] = [:]
+    private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
+    private var submitting: Set<MobilePromptTarget> = []
+
+    var currentPromptTarget: MobilePromptTarget? {
+        guard let deviceID = selectedDeviceID, let session = selectedSession,
+              let spaceID = selectedSpaceID, let tabID = selectedTabID,
+              let paneID = selectedAgentPaneID, !selectedTargetUnavailable else { return nil }
+        return MobilePromptTarget(deviceID: deviceID, presentationID: session.presentationID,
+            connectionID: session.connectionID, spaceID: spaceID, tabID: tabID, paneID: paneID)
+    }
+
+    var paneMode: MobilePaneMode {
+        guard let target = currentPromptTarget else { return .terminal }
+        // Reconnects preserve presentation identity and the user's mode.
+        return paneModes.first { $0.key.deviceID == target.deviceID && $0.key.presentationID == target.presentationID &&
+            $0.key.spaceID == target.spaceID && $0.key.tabID == target.tabID && $0.key.paneID == target.paneID }?.value
+            ?? (selectedAgent == nil ? .terminal : .chat)
+    }
+
+    func selectMode(_ mode: MobilePaneMode) {
+        guard let target = currentPromptTarget, mode == .terminal || selectedAgent != nil else { return }
+        paneModes = paneModes.filter { !($0.key.deviceID == target.deviceID && $0.key.paneID == target.paneID) }
+        paneModes[target] = mode
+    }
+
+    func isSubmitting(_ target: MobilePromptTarget) -> Bool { submitting.contains(target) }
+
+    /// A single acknowledged SSH submission. An uncertain request is never replayed.
+    func submitPrompt(target: MobilePromptTarget, attachmentPaths: [String] = []) async -> MobilePromptResult {
+        guard currentPromptTarget == target, selectedAgent != nil, selectedTransportReady,
+              let session = selectedSession, let transport = session.transport else { return .unavailable }
+        guard !submitting.contains(target) else { return .busy }
+        let original = agentDraft(paneID: target.paneID, deviceID: target.deviceID)
+        let text = ([original.trimmingCharacters(in: .whitespacesAndNewlines)] + attachmentPaths.map { "@" + $0 })
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+        guard !text.isEmpty else { return .unavailable }
+        submitting.insert(target)
+        defer { submitting.remove(target) }
+        do {
+            _ = try await transport.request(method: "agent.prompt", params: .object([
+                "target": .string(target.paneID), "text": .string(text)
+            ]))
+        } catch { return .failed }
+        guard currentPromptTarget == target, session.transport === transport else { return .targetChanged }
+        if agentDraft(paneID: target.paneID, deviceID: target.deviceID) == original {
+            setAgentDraft("", paneID: target.paneID, deviceID: target.deviceID)
+        }
+        return .acknowledged
+    }
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
@@ -538,6 +600,7 @@ final class MobileAppModel {
             agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+            paneModes = paneModes.filter { $0.key.deviceID != device.id }
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
             obsolete?.onChange = nil
@@ -686,6 +749,7 @@ final class MobileAppModel {
         clearNavigationHistory(for: device.id)
         devices.removeAll { $0.id == device.id }
         agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+        paneModes = paneModes.filter { $0.key.deviceID != device.id }
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
         }) {

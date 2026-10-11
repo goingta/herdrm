@@ -46,7 +46,21 @@ enum MobileGhosttyRuntime {
         }
     }
 
-    private static func makeTheme() -> TerminalTheme { TerminalPalette.makeTheme() }
+    private static func makeTheme() -> TerminalTheme {
+        func configuration(dark: Bool) -> TerminalConfiguration {
+            TerminalConfiguration { builder in
+                builder.withBackground(dark ? "#181613" : "#FAF8F3")
+                builder.withForeground(dark ? "#D8D0C3" : "#2A251F")
+                builder.withCursorColor(dark ? "#F0A830" : "#8C5000")
+                builder.withCursorText(dark ? "#181613" : "#FAF8F3")
+                builder.withSelectionBackground(dark ? "#4A3D26" : "#E7D4B2")
+                for (index, color) in (dark ? TerminalPalette.darkPalette : TerminalPalette.lightPalette).enumerated() {
+                    builder.withPalette(index, color: String(format: "#%02X%02X%02X", color.red, color.green, color.blue))
+                }
+            }
+        }
+        return TerminalTheme(light: configuration(dark: false), dark: configuration(dark: true))
+    }
 
 }
 
@@ -210,6 +224,7 @@ final class MobileAttachSession: ObservableObject {
     /// The Ghostty IO thread reports the grid here (hopped to main). The
     /// first report opens the channel; later ones resize it.
     private func handleViewportResize(columns: Int, rows: Int) {
+        guard presentationVisible else { return }
         lastGrid = (columns, rows)
         if let channel {
             Task { try? await channel.resize(columns: columns, rows: rows, timeout: .seconds(5)) }
@@ -350,18 +365,13 @@ final class MobileAttachSession: ObservableObject {
     }
 
     /// Sends a prompt to the agent; herdr delivers and submits it.
-    func prompt(_ text: String) {
-        guard transportReady, let agentPaneID else { return }
-        Task {
-            guard transportReady else { return }
-            _ = try? await transport.request(
-                method: "agent.prompt",
-                params: .object([
-                    "target": .string(agentPaneID),
-                    "text": .string(text),
-                ])
-            )
-        }
+    func prompt(_ text: String) async throws {
+        guard transportReady, let agentPaneID else { throw CancellationError() }
+        let sendingTransport = transport
+        _ = try await sendingTransport.request(method: "agent.prompt", params: .object([
+            "target": .string(agentPaneID), "text": .string(text)
+        ]))
+        guard transport === sendingTransport, transportReady else { throw CancellationError() }
     }
 
     func stop() {
@@ -428,6 +438,8 @@ struct MobileTerminalScreen: View {
     @State private var composerText = ""
     private let composerDraft: Binding<String>?
     @State private var keyboardShown = false
+    @State private var submitting = false
+    @State private var promptError = false
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
     private let transport: MobileTransport
@@ -490,10 +502,10 @@ struct MobileTerminalScreen: View {
 
     private var controls: some View {
         VStack(spacing: 8) {
+            if promptError { Text(AppLocalization.string("Message not confirmed. Draft retained; check the Agent before retrying."))
+                .font(.caption).foregroundStyle(Theme.warning) }
+            if session.agentPaneID != nil { composer }
             keyBar
-            if session.agentPaneID != nil {
-                composer
-            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
@@ -551,16 +563,24 @@ struct MobileTerminalScreen: View {
                             ? Theme.textGhost : Theme.accent
                     )
             }
-            .disabled(draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(submitting || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel(AppLocalization.string("Send Prompt"))
         }
     }
 
     private func sendPrompt() {
-        let text = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        session.prompt(text)
-        draft.wrappedValue = ""
+        let original = draft.wrappedValue
+        let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !submitting, transportReady else { return }
+        submitting = true
+        promptError = false
+        Task {
+            defer { submitting = false }
+            do {
+                try await session.prompt(text)
+                if draft.wrappedValue == original { draft.wrappedValue = "" }
+            } catch { promptError = true }
+        }
     }
 
     private var draft: Binding<String> { composerDraft ?? $composerText }

@@ -2,6 +2,21 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testReferenceHeaderShowsActualSessionAndModeControlsWithoutExtraWorkspaceHeader() {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].exists)
+        XCTAssertTrue(app.buttons["workspace.more"].exists)
+        XCTAssertFalse(app.staticTexts["workspace.title"].exists)
+        XCTAssertTrue(app.buttons["workspace.panes"].exists)
+        app.buttons["workspace.mode.terminal"].tap()
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].isSelected)
+        app.buttons["workspace.mode.chat"].tap()
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].isSelected)
+    }
+
+    @MainActor
     func testInitialFourthTabAndSpaceReturnKeepSelectionVisibleWithoutSwiping() {
         continueAfterFailure = false
         let app = XCUIApplication()
