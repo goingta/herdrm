@@ -110,6 +110,9 @@ targets:
         buildPhase: resources
       - path: Resources/BrandIcons.xcassets
         buildPhase: resources
+      - path: Resources/ChatPresentation
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: HerdrKit
       - package: HerdrSSH
@@ -209,6 +212,9 @@ targets:
       - Sources/HerdrShared
       - Tests/HerdrNavigationHarness
       - path: Resources/BrandIcons.xcassets
+        buildPhase: resources
+      - path: Resources/ChatPresentation
+        type: folder
         buildPhase: resources
       - path: Resources/Localizable.xcstrings
       - path: Resources/AppIcon/MobileAssets.xcassets
