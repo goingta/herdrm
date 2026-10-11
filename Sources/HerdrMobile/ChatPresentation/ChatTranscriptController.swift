@@ -64,6 +64,7 @@ final class ChatTranscriptController {
     private var completionBaselineHistory: String?
     private var hasCompletionBaseline = false
     private var completionProven = false
+    private var agentStatus = "unknown"
     private var agentWorking = false
     private var workingBaseline: ReplyIdentity?
     private var workingBaselineHistory: String?
@@ -71,6 +72,13 @@ final class ChatTranscriptController {
 
     /// Called synchronously before activity updates, so a final HTTP reply that arrives
     /// before the native done event still belongs to the preceding working cycle.
+    func observeAgentStatus(_ status: String) {
+        observeAgentWorking(status == "working")
+        guard agentStatus != status else { return }
+        agentStatus = status
+        publish()
+    }
+
     func observeAgentWorking(_ working: Bool) {
         if working && !agentWorking {
             workingBaseline = latestReply(conversation)
@@ -344,7 +352,7 @@ final class ChatTranscriptController {
             let identity = key(turn)
             let occurrence = occurrences[identity, default: 0]
             occurrences[identity] = occurrence + 1
-            return ChatRenderTurn(role: turn.role, timestamp: turn.ts, parts: turn.parts.flatMap(renderParts), key: identity + ":" + String(occurrence))
+            return ChatRenderTurn(role: turn.role, timestamp: turn.ts, parts: turn.parts.flatMap(renderParts), key: identity + ":" + String(occurrence), endTimestamp: turn.endTS, live: ["working", "blocked"].contains(agentStatus) && turn == conversation.turns.last, waiting: agentStatus == "blocked" && turn == conversation.turns.last)
         }
         var document = ChatRenderDocument(targetKey: target.presentationID.uuidString + ":" + target.paneID,
             historyID: conversation.historyID, revision: documentRevision, source: conversation.source, turns: turns)
@@ -354,7 +362,7 @@ final class ChatTranscriptController {
         document.freshContent = fresh && active && conversation.isStructured
         document.readinessAllowed = document.freshContent && (completionRevision == 0 || completionProven || verifiedRevision == documentRevision)
         document.theme = theme; document.language = language; document.textScale = textScale
-        document.labels = language == "zh" ? ["thinking":"思考过程", "copy":"复制", "fullOutput":"加载完整输出", "image":"加载图片", "unknown":"暂不支持的内容", "older":"加载更早的消息", "empty":"暂无聊天记录", "degraded":"当前为终端回滚降级内容，服务未提供结构化聊天。", "limit":"为限制内存，较早的消息已释放。此页面最多保留最近 1000 条记录。"] : [:]
+        document.labels = language == "zh" ? ["thinking":"思考过程", "worked":"已工作", "workedFor":"工作了", "working":"正在工作…", "waiting":"需要你回应", "copyMessage":"复制消息", "copy":"复制", "fullOutput":"加载完整输出", "image":"加载图片", "unknown":"暂不支持的内容", "older":"加载更早的消息", "empty":"暂无聊天记录", "degraded":"当前为终端回滚降级内容，服务未提供结构化聊天。", "limit":"为限制内存，较早的消息已释放。此页面最多保留最近 1000 条记录。"] : [:]
         // Bound display memory independently of the HTTP boundary. Never send an oversized
         // transcript across the native bridge; retain the previous readable page on failure.
         guard let data = try? JSONEncoder().encode(document), data.count <= 8 * 1024 * 1024 else {
@@ -368,7 +376,7 @@ final class ChatTranscriptController {
         case .text(let text, let phase): return [.init(kind: "text", text: text, phase: phase)]
         case .thinking(let text): return [.init(kind: "thinking", text: text)]
         case .tool(let tool):
-            return [.init(kind: "tool", name: tool.name, summary: tool.summary, input: tool.input, output: tool.output, ref: tool.outputRef)]
+            return [.init(kind: "tool", name: tool.name, summary: tool.summary, input: tool.input, output: tool.output, ref: tool.outputRef, error: tool.error)]
                 + (tool.images ?? []).map { .init(kind: "image", ref: $0.ref) }
         case .image(let image): return [.init(kind: "image", ref: image.ref)]
         case .compact(let text): return [.init(kind: "compact", text: text)]

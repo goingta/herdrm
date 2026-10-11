@@ -25,7 +25,7 @@ struct MobilePaneWorkspace: View {
                 MobileTerminalScreen(transport: transport, target: .agent(paneID: target.paneID),
                     paneID: target.paneID, title: agent.title(tabLabel: model.tabLabel(for: agent)), composerDraft: draft,
                     readState: model.agentReadState, unreadKey: AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID),
-                    onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady)
+                    onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady, submitPrompt: { await model.submitPrompt(target: target) }, refreshRevision: model.terminalRefreshRevision)
                     .environment(\.agentTabVisible, terminalVisible)
                     .opacity(model.paneMode == .terminal ? 1 : 0)
                     .allowsHitTesting(terminalVisible).accessibilityHidden(!terminalVisible)
@@ -126,7 +126,7 @@ struct MobileChatWorkspace: View {
     private func updateActivity() {
         guard let controller else { return }
         controller.onOpenURL = openURL
-        controller.observeAgentWorking(model.selectedAgent?.status == .working)
+        controller.observeAgentStatus(model.selectedAgent?.status.rawValue ?? "unknown")
         controller.setActivity(visible: visible, foreground: scenePhase == .active,
             connectionValidated: model.selectedTransportReady && model.currentPromptTarget == target,
             completionRevision: model.chatCompletionRevision(for: target))

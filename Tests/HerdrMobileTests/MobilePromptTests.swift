@@ -51,6 +51,25 @@ final class MobilePromptTests: XCTestCase {
         await model.selectedSession?.disconnect()
     }
 
+    func testHostEditCannotClearSameTextDraftAfterOldHostAcknowledges() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let device = MobileDevice(name: "Fixture", host: "old.fixture", username: "developer")
+        store.save([device]); let transport = PromptBoundary(succeeds: true)
+        let model = MobileAppModel(store: store, connector: { _ in transport })
+        model.connectSelected()
+        for _ in 0..<100 { if model.selectedTransportReady { break }; try await Task.sleep(for: .milliseconds(20)) }
+        let target = try XCTUnwrap(model.currentPromptTarget)
+        model.setAgentDraft("Same text", paneID: target.paneID, deviceID: device.id)
+        let oldSend = Task { await model.submitPrompt(target: target) }
+        try await Task.sleep(for: .milliseconds(30))
+        var replacement = device; replacement.host = "new.fixture"; try model.updateDevice(replacement)
+        model.setAgentDraft("Same text", paneID: target.paneID, deviceID: device.id)
+        let result = await oldSend.value
+        XCTAssertEqual(result, .targetChanged)
+        XCTAssertEqual(model.agentDraft(paneID: target.paneID, deviceID: device.id), "Same text")
+        await model.selectedSession?.disconnect()
+    }
+
     func testServiceBindingEditDoesNotAcknowledgeTheNewComposerDraft() async throws {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let device = MobileDevice(name: "Fixture", host: "fixture.example", username: "developer")

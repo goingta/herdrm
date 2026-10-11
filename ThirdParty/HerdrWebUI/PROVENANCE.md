@@ -11,6 +11,8 @@ produced by Node's stripTypeScriptTypes(mode: strip), removing the single parser
 import and `export` keywords for classic offline scripts, then trimming trailing
 whitespace. Classic scripts are deliberate: WKWebView blocks file-URL ES module
 imports. The plainText helper is adapted from ChatView.tsx at this same revision.
+The assistant work grouping, initial fold state, tool categories and duration
+formatting are adapted from src/lib/workBlocks.ts at the same MIT revision.
 The copy glyph uses two CSS boxes matching the reference overlapping-copy icon. Transcript DOM/native bridge
 and controller are herdrm implementations. Fonts fall back to the native system
 fonts; mathematical notation remains readable source rather than loading a CDN.

@@ -6,6 +6,23 @@ import WebKit
 
 @MainActor
 final class ChatTranscriptControllerTests: XCTestCase {
+    func testWorkStateUsesNativeAgentStatusForCurrentActualHistory() async throws {
+        let fixture = TranscriptHTTPFixture()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        defer { controller.invalidate() }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        await controller.refreshNow()
+        controller.observeAgentStatus("blocked")
+        XCTAssertEqual(controller.renderer.document?.turns.last?.live, true)
+        XCTAssertEqual(controller.renderer.document?.turns.last?.waiting, true)
+        controller.observeAgentStatus("working")
+        XCTAssertEqual(controller.renderer.document?.turns.last?.live, true)
+        XCTAssertEqual(controller.renderer.document?.turns.last?.waiting, false)
+        controller.observeAgentStatus("done")
+        XCTAssertEqual(controller.renderer.document?.turns.last?.live, false)
+        XCTAssertEqual(controller.renderer.document?.turns.last?.waiting, false)
+    }
+
     func testCompletionDoesNotAcknowledgeOldReplyAfterFreshRequest() async throws {
         let fixture = TranscriptHTTPFixture()
         let service = try fixture.service()
