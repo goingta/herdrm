@@ -140,6 +140,22 @@ final class WebChatServiceTests: XCTestCase {
         XCTAssertEqual(WebChatSecretStore.credential(for: binding, nativeDeviceID: device.id), .token("replacement-fixture"))
     }
 
+    func testCursorGapPagingUsesExactBeforeAndSinceWithoutTimestampGuessing() async throws {
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            if request.url?.query?.contains("before=") == true {
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                XCTAssertEqual(query?.first { $0.name == "before" }?.value, "cursor-new")
+                XCTAssertEqual(query?.first { $0.name == "since" }?.value, "cursor-old")
+            }
+            return (200, [:], Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"cursor\":\"cursor-new\",\"turns\":[]}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        let page = try await service.conversation(for: Self.target, page: .between(before: "cursor-new", since: "cursor-old"))
+        XCTAssertEqual(page.conversation.historyID, "history-a")
+    }
+
     private static let target = WebChatTarget(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space-a", tabID: "tab-a", paneID: "pane-a")
     private static let machineJSON = Data("""
     {"machines":[{"id":"local","name":"Fixture Linux","kind":"local","enabled":true,"state":"connected","error":null,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space-a"}],"tabs":[{"tab_id":"tab-a","workspace_id":"space-a"}],"panes":[{"pane_id":"pane-a","tab_id":"tab-a","workspace_id":"space-a"}]}}]}

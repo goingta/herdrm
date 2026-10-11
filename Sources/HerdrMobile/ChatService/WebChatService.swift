@@ -50,6 +50,9 @@ actor WebChatService {
         case .latest: break
         case .before(let cursor): query.append(URLQueryItem(name: "before", value: cursor))
         case .from(let cursor): query.append(URLQueryItem(name: "from", value: cursor))
+        case .between(let before, let since):
+            query.append(URLQueryItem(name: "before", value: before))
+            query.append(URLQueryItem(name: "since", value: since))
         }
         let previous = cache[key]
         let data: Data

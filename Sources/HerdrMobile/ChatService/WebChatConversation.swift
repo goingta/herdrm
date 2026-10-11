@@ -114,7 +114,7 @@ enum WebChatPart: Codable, Equatable, Sendable {
     }
 }
 
-enum WebChatPage: Hashable, Sendable { case latest, before(String), from(String) }
+enum WebChatPage: Hashable, Sendable { case latest, before(String), from(String), between(before: String, since: String) }
 struct WebChatConversationResult: Sendable {
     let conversation: WebChatConversation
     let etag: String?

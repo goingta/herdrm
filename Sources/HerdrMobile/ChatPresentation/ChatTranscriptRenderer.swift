@@ -29,12 +29,16 @@ struct ChatRenderDocument: Codable, Equatable {
     var source: String
     var turns: [ChatRenderTurn]
     var hasOlder = false
+    var historyLimited = false
     var prepended = false
     var readinessAllowed = true
+    var freshContent = false
     var theme = "dark"
     var language = "en"
     var textScale: Double = 1
     var labels: [String: String] = [:]
+    var restoreScroll: Double? = nil
+    var restoreFolds: [String]? = nil
 }
 
 struct ChatRendererProof: Equatable {
@@ -49,7 +53,10 @@ struct ChatRendererProof: Equatable {
 final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     let webView: WKWebView
     var onPresented: ((ChatRendererProof) -> Void)?
+    var onVisibleLatestReply: ((ChatRendererProof) -> Void)?
     var onLoadOlder: (() -> Void)?
+    var onReload: (() -> Void)?
+    var onUnavailable: (() -> Void)?
     var onImage: ((String, String, ChatRendererProof) -> Void)?
     var onToolOutput: ((String, String, ChatRendererProof) -> Void)?
     var onOpenURL: ((URL) -> Void)?
@@ -57,6 +64,13 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     private var loaded = false
     private var visible = false
     private var bridge: TranscriptBridge!
+    private var pageID = UUID().uuidString
+    private var scrollTop: Double?
+    private var folds: [String] = []
+    private var restorePending = false
+    private var automaticReloads = 0
+    private var lastTermination: Date?
+    private(set) var requiresReload = false
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -70,11 +84,55 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.accessibilityIdentifier = "chat.transcript"
-        guard let url = Bundle.main.url(forResource: "transcript", withExtension: "html", subdirectory: "ChatPresentation") else { return }
-        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        loadPage()
+    }
+
+    private func loadPage() {
+        guard let url = Bundle.main.url(forResource: "transcript", withExtension: "html", subdirectory: "ChatPresentation"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        loaded = false
+        pageID = UUID().uuidString
+        components.fragment = pageID
+        guard let address = components.url else { return }
+        webView.loadFileURL(address, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
+    /// Recovers the offline document after WebContent loss without treating cached content
+    /// as newly presented. Fold/viewport context is bounded and retained natively.
+    func reloadRetainingContext() {
+        automaticReloads = 0
+        recoverPage()
+    }
+
+    private func recoverPage() {
+        requiresReload = false
+        loaded = false
+        pageID = UUID().uuidString
+        restorePending = true
+        document?.readinessAllowed = false
+        document?.freshContent = false
+        onReload?()
+        loadPage()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        loaded = false
+        if let previous = lastTermination, Date().timeIntervalSince(previous) > 60 { automaticReloads = 0 }
+        lastTermination = Date()
+        guard automaticReloads < 3 else {
+            requiresReload = true
+            document?.readinessAllowed = false
+            onUnavailable?()
+            return
+        }
+        automaticReloads += 1
+        recoverPage()
     }
 
     func present(_ document: ChatRenderDocument) {
+        if self.document?.targetKey != document.targetKey || self.document?.historyID != document.historyID {
+            scrollTop = nil; folds = []
+        }
         self.document = document
         if loaded { publish() }
     }
@@ -83,6 +141,8 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
         self.visible = visible
         if loaded { call("setVisible", arguments: [visible]) }
     }
+
+    func requestVisibleProof() { if loaded { call("requestProof", arguments: []) } }
 
     func displayImage(_ data: Data, contentType: String, key: String, proof: ChatRendererProof) {
         guard matches(proof), ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(contentType),
@@ -105,7 +165,9 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     }
 
     private func publish() {
-        guard let document, let data = try? JSONEncoder().encode(document),
+        guard var document else { return }
+        if restorePending { document.restoreScroll = scrollTop; document.restoreFolds = folds; restorePending = false }
+        guard let data = try? JSONEncoder().encode(document),
               let object = try? JSONSerialization.jsonObject(with: data) else { return }
         call("present", arguments: [object])
         call("setVisible", arguments: [visible])
@@ -121,12 +183,18 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     }
 
     fileprivate func receive(_ message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let body = message.body as? [String: Any], let kind = body["kind"] as? String else { return }
+        guard message.frameInfo.isMainFrame, let body = message.body as? [String: Any], let kind = body["kind"] as? String, body["pageID"] as? String == pageID else { return }
         if kind == "loaded" { loaded = true; publish(); return }
         guard let targetKey = body["targetKey"] as? String, let revision = body["revision"] as? String else { return }
         let proof = ChatRendererProof(targetKey: targetKey, historyID: body["historyID"] as? String, revision: revision)
         guard matches(proof) else { return }
         switch kind {
+        case "context":
+            if let top = body["scrollTop"] as? Double, top.isFinite, top >= 0, top <= 100_000_000 { scrollTop = top }
+            if let keys = body["folds"] as? [String] { folds = Array(keys.filter { $0.count <= 256 }.prefix(128)) }
+        case "visibleLatest":
+            guard visible, webView.window != nil, document?.freshContent == true else { return }
+            onVisibleLatestReply?(proof)
         case "presented":
             guard visible, webView.window != nil, document?.readinessAllowed == true, document?.source != "scrollback" else { return }
             onPresented?(proof)
@@ -147,7 +215,8 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         // Only the bundled initial document may navigate. Transcript links are native actions.
-        decisionHandler(navigationAction.request.url?.isFileURL == true ? .allow : .cancel)
+        let bundled = Bundle.main.url(forResource: "transcript", withExtension: "html", subdirectory: "ChatPresentation")
+        decisionHandler(navigationAction.request.url?.isFileURL == true && navigationAction.request.url?.path == bundled?.path ? .allow : .cancel)
     }
 }
 

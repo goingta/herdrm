@@ -39,6 +39,86 @@ final class ChatTranscriptControllerTests: XCTestCase {
         await fulfillment(of: [latest], timeout: 10)
     }
 
+    func testReplyArrivingWhileWorkingRemainsProvableAfterCompletionEdge() async throws {
+        let fixture = TranscriptHTTPFixture()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        controller.renderer.webView.frame = window.bounds
+        host.view.addSubview(controller.renderer.webView)
+        window.makeKeyAndVisible()
+        defer { controller.invalidate(); window.isHidden = true }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        await controller.refreshNow()
+        controller.observeAgentWorking(true)
+        fixture.setReply("final result arrived before native done event")
+        await controller.refreshNow()
+        controller.observeAgentWorking(false)
+        let ready = expectation(description: "Reply belongs to the completed working cycle")
+        controller.onPresented = { proof in
+            if proof.completionRevision == 1 { ready.fulfill() }
+        }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 1)
+        await controller.refreshNow()
+        await fulfillment(of: [ready], timeout: 5)
+    }
+
+    func testVerifiedColdReplyIsAcceptedOnlyForStillCurrentVisibleDocument() async throws {
+        let fixture = TranscriptHTTPFixture()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        controller.renderer.webView.frame = window.bounds
+        host.view.addSubview(controller.renderer.webView)
+        window.makeKeyAndVisible()
+        defer { controller.invalidate(); window.isHidden = true }
+        var candidate: ChatVisibleReplyCandidate?
+        let visible = expectation(description: "Cold reply actually mounted")
+        controller.onVisibleLatestReply = { value in candidate = value; visible.fulfill() }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        await controller.refreshNow()
+        await fulfillment(of: [visible], timeout: 5)
+        let verified = expectation(description: "Fresh current pane verification accepted")
+        controller.onPresented = { proof in if proof.verifiedByCurrentPane { verified.fulfill() } }
+        controller.acceptVerifiedCompletion(candidate: try XCTUnwrap(candidate))
+        await fulfillment(of: [verified], timeout: 5)
+        let stale = try XCTUnwrap(candidate)
+        controller.onVisibleLatestReply = nil
+        fixture.replaceHistory()
+        await controller.refreshNow()
+        let rejected = expectation(description: "Old history verification rejected")
+        rejected.isInverted = true
+        controller.onPresented = { proof in if proof.verifiedByCurrentPane { rejected.fulfill() } }
+        controller.acceptVerifiedCompletion(candidate: stale)
+        await fulfillment(of: [rejected], timeout: 0.3)
+    }
+
+    func testDistinctTurnsWithSameProviderTimestampSurviveRefresh() async throws {
+        let fixture = TranscriptHTTPFixture()
+        fixture.useRepeatedTimestamp()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        defer { controller.invalidate() }
+        await controller.refreshNow()
+        await controller.refreshNow()
+        let texts = controller.renderer.document?.turns.compactMap { $0.parts.first?.text }
+        XCTAssertEqual(texts, ["first distinct reply", "second distinct reply"])
+    }
+
+    func testMovingLatestWindowFillsCursorGapWithoutSkippingTurns() async throws {
+        let fixture = TranscriptHTTPFixture()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        defer { controller.invalidate() }
+        await controller.refreshNow()
+        await controller.loadOlderNow()
+        fixture.advanceWindow()
+        await controller.refreshNow()
+        XCTAssertEqual(controller.renderer.document?.turns.compactMap { $0.parts.first?.text }, ["older prompt", "latest answer", "middle appended answer", "newest answer"])
+    }
+
     func testPagingAndHistoryReplacementKeepOnlyCurrentConversation() async throws {
         let fixture = TranscriptHTTPFixture()
         let service = try fixture.service()
@@ -61,6 +141,10 @@ final class ChatTranscriptControllerTests: XCTestCase {
 private final class TranscriptHTTPFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var replaced = false
+    private var advanced = false
+    func advanceWindow() { lock.withLock { advanced = true } }
+    private var repeatedTimestamp = false
+    func useRepeatedTimestamp() { lock.withLock { repeatedTimestamp = true } }
     private var reply = "latest answer"
     func setReply(_ text: String) { lock.withLock { reply = text } }
     func replaceHistory() { lock.withLock { replaced = true } }
@@ -68,6 +152,16 @@ private final class TranscriptHTTPFixture: @unchecked Sendable {
         TranscriptURLProtocol.handler = { [self] request in
             if request.url!.path.hasSuffix("machines") {
                 return #"{"machines":[{"id":"local","name":"Fixture","kind":"local","state":"connected","enabled":true,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space"}],"tabs":[{"tab_id":"tab","workspace_id":"space"}],"panes":[{"pane_id":"pane","tab_id":"tab","workspace_id":"space"}]}}]}"#
+            }
+            if lock.withLock({ repeatedTimestamp }) {
+                return #"{"history_id":"repeated","source":"claude-transcript","cursor":null,"turns":[{"role":"assistant","ts":"2026-10-10T01:01:00Z","parts":[{"kind":"text","text":"first distinct reply"}]},{"role":"assistant","ts":"2026-10-10T01:01:00Z","parts":[{"kind":"text","text":"second distinct reply"}]}]}"#
+            }
+            if lock.withLock({ advanced }) {
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                if query.contains(where: { $0.name == "since" }) {
+                    return #"{"history_id":"first","source":"claude-transcript","cursor":"page-two","turns":[{"role":"assistant","ts":"2026-10-10T01:01:00Z","parts":[{"kind":"text","text":"latest answer"}]},{"role":"assistant","ts":"2026-10-10T01:02:00Z","parts":[{"kind":"text","text":"middle appended answer"}]}]}"#
+                }
+                return #"{"history_id":"first","source":"claude-transcript","cursor":"page-four","turns":[{"role":"assistant","ts":"2026-10-10T01:04:00Z","parts":[{"kind":"text","text":"newest answer"}]}]}"#
             }
             let second = lock.withLock { replaced }
             let older = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.contains { $0.name == "before" } == true

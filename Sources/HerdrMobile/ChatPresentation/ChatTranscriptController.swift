@@ -7,6 +7,15 @@ struct ChatRenderProof: Equatable {
     let historyID: String
     let revision: String
     let completionRevision: UInt64
+    var verifiedByCurrentPane = false
+}
+
+struct ChatVisibleReplyCandidate: Equatable {
+    let target: WebChatTarget
+    let historyID: String
+    let revision: String
+    let completionRevision: UInt64
+    let text: String
 }
 
 enum ChatTranscriptState: Equatable {
@@ -24,6 +33,9 @@ final class ChatTranscriptController {
     private(set) var isLoadingOlder = false
     var metadata: WebChatMetadata? { conversation?.metadata }
     var onPresented: ((ChatRenderProof) -> Void)?
+    var onVisibleLatestReply: ((ChatVisibleReplyCandidate) -> Void)?
+    private var issuedCandidate: ChatVisibleReplyCandidate?
+    private var verifiedRevision: String?
     var onOpenURL: ((URL) -> Void)? {
         didSet { renderer.onOpenURL = onOpenURL }
     }
@@ -38,15 +50,78 @@ final class ChatTranscriptController {
     private var textScale: Double = 1
     private var documentRevision = UUID().uuidString
     private var fresh = false
+    private var olderTurns: [WebChatTurn] = []
+    private var currentTurns: [WebChatTurn] = []
+    private var olderCursor: String?
+    private var hasLoadedOlder = false
+    private(set) var historyLimitReached = false
+    private var heldFrom: String?
     private struct ReplyIdentity: Equatable { let history: String?; let fingerprint: String }
     private var completionBaseline: ReplyIdentity?
     private var hasCompletionBaseline = false
     private var completionProven = false
+    private var agentWorking = false
+    private var workingBaseline: ReplyIdentity?
+    private var hasWorkingBaseline = false
+
+    /// Called synchronously before activity updates, so a final HTTP reply that arrives
+    /// before the native done event still belongs to the preceding working cycle.
+    func observeAgentWorking(_ working: Bool) {
+        if working && !agentWorking {
+            workingBaseline = latestReply(conversation)
+            hasWorkingBaseline = conversation != nil
+        }
+        agentWorking = working
+    }
+
+    /// The shell may call this only after a fresh, exact native pane verification.
+    /// The renderer then rechecks visibility; an asynchronous verification cannot clear
+    /// unread after a target/history/document change or after scrolling away.
+    func acceptVerifiedCompletion(candidate: ChatVisibleReplyCandidate) {
+        guard active, fresh, candidate == issuedCandidate, candidate.target == target,
+              candidate.historyID == conversation?.historyID, candidate.revision == documentRevision,
+              candidate.completionRevision == completionRevision else { return }
+        verifiedRevision = documentRevision
+        publish()
+        renderer.requestVisibleProof()
+    }
+
+    private func visibleLatest(_ proof: ChatRendererProof) {
+        guard active, fresh, proof.revision == documentRevision, let conversation,
+              conversation.isStructured, let history = conversation.historyID, !history.isEmpty else { return }
+        let text = conversation.turns.reversed().filter { $0.role == "assistant" }.lazy.compactMap { turn in
+            turn.parts.reversed().compactMap { part -> String? in
+                if case .text(let text, let phase) = part, phase != "commentary", !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+                return nil
+            }.first
+        }.first
+        guard let text else { return }
+        let candidate = ChatVisibleReplyCandidate(target: target, historyID: history, revision: documentRevision,
+            completionRevision: completionRevision, text: String(text.suffix(2048)))
+        issuedCandidate = candidate
+        onVisibleLatestReply?(candidate)
+    }
 
     init(target: WebChatTarget, service: WebChatService) {
         self.target = target
         self.service = service
+        renderer.onReload = { [weak self] in
+            guard let self else { return }
+            self.fresh = false
+            self.issuedCandidate = nil; self.verifiedRevision = nil
+            self.documentRevision = UUID().uuidString
+            self.publish()
+            if self.active { self.refresh() }
+        }
+        renderer.onUnavailable = { [weak self] in
+            self?.fresh = false
+            self?.state = .failed(.transport)
+            self?.pollTask?.cancel(); self?.pollTask = nil
+            self?.fetchTask?.cancel(); self?.fetchTask = nil
+            self?.epoch = UUID()
+        }
         renderer.onLoadOlder = { [weak self] in self?.loadOlder() }
+        renderer.onVisibleLatestReply = { [weak self] proof in self?.visibleLatest(proof) }
         renderer.onPresented = { [weak self] proof in self?.presented(proof) }
         renderer.onImage = { [weak self] ref, key, proof in self?.loadReference(ref, key: key, proof: proof, image: true) }
         renderer.onToolOutput = { [weak self] ref, key, proof in self?.loadReference(ref, key: key, proof: proof, image: false) }
@@ -55,9 +130,11 @@ final class ChatTranscriptController {
     func setActivity(visible: Bool, foreground: Bool, connectionValidated: Bool, completionRevision: UInt64) {
         if self.completionRevision != completionRevision {
             self.completionRevision = completionRevision
-            completionBaseline = latestReply(conversation)
-            hasCompletionBaseline = conversation != nil
+            completionBaseline = hasWorkingBaseline ? workingBaseline : latestReply(conversation)
+            hasCompletionBaseline = hasWorkingBaseline || conversation != nil
+            hasWorkingBaseline = false
             completionProven = false
+            issuedCandidate = nil; verifiedRevision = nil
             fresh = false
             epoch = UUID()
             fetchTask?.cancel(); fetchTask = nil
@@ -68,12 +145,14 @@ final class ChatTranscriptController {
         guard active != next else { return }
         active = next
         renderer.setVisible(next)
+        issuedCandidate = nil; verifiedRevision = nil
         fresh = false
         publish()
         if next { startPolling() } else {
             epoch = UUID()
             pollTask?.cancel(); pollTask = nil
             fetchTask?.cancel(); fetchTask = nil
+            isLoadingOlder = false
         }
     }
 
@@ -88,11 +167,12 @@ final class ChatTranscriptController {
 
     func refreshNow() async {
         guard active else { return }
+        if renderer.requiresReload { renderer.reloadRetainingContext() }
         if let task = fetchTask { await task.value; return }
         let expected = epoch
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.fetch(page: self.conversation?.cursor.map(WebChatPage.from) ?? .latest, expected: expected)
+            await self.fetch(page: self.heldFrom.map(WebChatPage.from) ?? .latest, expected: expected)
         }
         fetchTask = task
         await task.value
@@ -102,11 +182,17 @@ final class ChatTranscriptController {
     func loadOlder() { Task { [weak self] in await self?.loadOlderNow() } }
 
     func loadOlderNow() async {
-        guard active, !isLoadingOlder, let cursor = conversation?.cursor else { return }
+        if let task = fetchTask { await task.value }
+        guard active, !isLoadingOlder, !historyLimitReached, let cursor = conversation?.cursor else { return }
         isLoadingOlder = true
         let expected = epoch
-        await fetch(page: .before(cursor), expected: expected)
-        if epoch == expected { isLoadingOlder = false }
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.fetch(page: .before(cursor), expected: expected)
+        }
+        fetchTask = task
+        await task.value
+        if epoch == expected { isLoadingOlder = false; fetchTask = nil }
     }
 
     func invalidate() {
@@ -130,30 +216,47 @@ final class ChatTranscriptController {
     private func fetch(page: WebChatPage, expected: UUID) async {
         do {
             let result: WebChatConversationResult
+            var cursorInvalidated = false
             do { result = try await service.conversation(for: target, page: page) }
-            catch WebChatError.historyChanged { result = try await service.conversation(for: target) }
+            catch WebChatError.historyChanged {
+                cursorInvalidated = true
+                result = try await service.conversation(for: target)
+            }
             guard expected == epoch, active, !Task.isCancelled else { return }
             let incoming = result.conversation
-            let replaced = result.historyReplaced || conversation.map { $0.historyID != incoming.historyID } == true
-            let turns: [WebChatTurn]
-            let cursor: String?
+            let replaced = cursorInvalidated || result.historyReplaced || conversation.map { $0.historyID != incoming.historyID } == true
             let prepended: Bool
-            if case .before = page, !replaced, let previous = conversation {
-                turns = merge(incoming.turns, previous.turns)
-                cursor = incoming.cursor
+            if replaced {
+                olderTurns = []; currentTurns = []; heldFrom = nil
+                olderCursor = incoming.cursor; hasLoadedOlder = false; historyLimitReached = false
+            }
+            if case .before = page, !replaced {
+                olderTurns = incoming.turns + olderTurns
+                olderCursor = incoming.cursor
+                hasLoadedOlder = true
                 prepended = true
-            } else if !replaced, let previous = conversation {
-                turns = merge(previous.turns, incoming.turns)
-                cursor = previous.cursor
-                prepended = false
             } else {
-                turns = incoming.turns
-                cursor = incoming.cursor
+                if !replaced, let held = heldFrom, let start = incoming.cursor, held != start, incoming.isStructured {
+                    let gap = try await turnsBetween(held: held, start: start, history: incoming.historyID, expected: expected)
+                    guard expected == epoch, active, !Task.isCancelled else { return }
+                    olderTurns += gap
+                    hasLoadedOlder = true
+                }
+                currentTurns = incoming.turns
+                heldFrom = incoming.cursor
+                if !hasLoadedOlder { olderCursor = incoming.cursor }
                 prepended = false
             }
-            let bounded = Array(turns.suffix(1000))
-            conversation = WebChatConversation(source: incoming.source, historyID: incoming.historyID, turns: bounded,
-                cursor: turns.count > 1000 ? incoming.cursor : cursor, metadata: incoming.metadata)
+            // Keep the latest page and at most 1000 total turns. The user sees an explicit
+            // limit notice rather than an endlessly loading older-page control.
+            currentTurns = Array(currentTurns.suffix(1000))
+            let capacity = max(0, 1000 - currentTurns.count)
+            if olderTurns.count > capacity {
+                olderTurns = Array(olderTurns.suffix(capacity))
+                historyLimitReached = true
+            }
+            conversation = WebChatConversation(source: incoming.source, historyID: incoming.historyID,
+                turns: olderTurns + currentTurns, cursor: historyLimitReached ? nil : olderCursor, metadata: incoming.metadata)
             state = incoming.isStructured ? .ready : .degraded
             if completionRevision > 0 {
                 let reply = latestReply(conversation)
@@ -161,12 +264,17 @@ final class ChatTranscriptController {
                     completionBaseline = reply
                     hasCompletionBaseline = true
                     completionProven = false
-                } else if let reply, reply.history == completionBaseline?.history, reply != completionBaseline {
-                    completionProven = true
+                } else {
+                    completionProven = reply != nil && reply?.history == completionBaseline?.history && reply != completionBaseline
                 }
+            }
+            if agentWorking && !hasWorkingBaseline {
+                workingBaseline = latestReply(conversation)
+                hasWorkingBaseline = true
             }
             fresh = true
             documentRevision = UUID().uuidString
+            issuedCandidate = nil; verifiedRevision = nil
             publish(prepended: prepended)
         } catch {
             guard expected == epoch, active, !Task.isCancelled else { return }
@@ -176,15 +284,22 @@ final class ChatTranscriptController {
         }
     }
 
-    private func merge(_ older: [WebChatTurn], _ newer: [WebChatTurn]) -> [WebChatTurn] {
-        var values = older
-        var indices = Dictionary(older.enumerated().map { (key($0.element), $0.offset) }, uniquingKeysWith: { first, _ in first })
-        for turn in newer {
-            let identity = key(turn)
-            if let index = indices[identity] { values[index] = turn }
-            else { indices[identity] = values.count; values.append(turn) }
+    private func turnsBetween(held: String, start: String, history: String?, expected: UUID) async throws -> [WebChatTurn] {
+        var pages: [[WebChatTurn]] = []
+        var before = start
+        var visited: Set<String> = []
+        for _ in 0..<32 {
+            if before == held { return pages.flatMap { $0 } }
+            guard visited.insert(before).inserted else { throw WebChatError.invalidResponse }
+            let result = try await service.conversation(for: target, page: .between(before: before, since: held))
+            guard expected == epoch, active, !Task.isCancelled else { throw CancellationError() }
+            guard !result.historyReplaced, result.conversation.historyID == history,
+                  let cursor = result.conversation.cursor else { throw WebChatError.historyChanged }
+            pages.insert(result.conversation.turns, at: 0)
+            guard pages.reduce(0, { $0 + $1.count }) <= 1000 else { throw WebChatError.invalidResponse }
+            before = cursor
         }
-        return values
+        throw WebChatError.invalidResponse
     }
 
     private func key(_ turn: WebChatTurn) -> String {
@@ -194,14 +309,20 @@ final class ChatTranscriptController {
 
     private func publish(prepended: Bool = false) {
         guard let conversation else { return }
+        var occurrences: [String: Int] = [:]
         let turns = conversation.turns.map { turn in
-            ChatRenderTurn(role: turn.role, timestamp: turn.ts, parts: turn.parts.flatMap(renderParts), key: key(turn))
+            let identity = key(turn)
+            let occurrence = occurrences[identity, default: 0]
+            occurrences[identity] = occurrence + 1
+            return ChatRenderTurn(role: turn.role, timestamp: turn.ts, parts: turn.parts.flatMap(renderParts), key: identity + ":" + String(occurrence))
         }
         var document = ChatRenderDocument(targetKey: target.presentationID.uuidString + ":" + target.paneID,
             historyID: conversation.historyID, revision: documentRevision, source: conversation.source, turns: turns)
         document.hasOlder = conversation.cursor != nil
+        document.historyLimited = historyLimitReached
         document.prepended = prepended
-        document.readinessAllowed = fresh && active && conversation.isStructured && (completionRevision == 0 || completionProven)
+        document.freshContent = fresh && active && conversation.isStructured
+        document.readinessAllowed = document.freshContent && (completionRevision == 0 || completionProven || verifiedRevision == documentRevision)
         document.theme = theme; document.language = language; document.textScale = textScale
         document.labels = language == "zh" ? ["thinking":"思考过程", "copy":"复制", "fullOutput":"加载完整输出", "image":"加载图片", "unknown":"暂不支持的内容", "older":"加载更早的消息", "empty":"暂无聊天记录", "degraded":"当前为终端回滚降级内容，服务未提供结构化聊天。"] : [:]
         // Bound display memory independently of the HTTP boundary. Never send an oversized
@@ -266,9 +387,9 @@ final class ChatTranscriptController {
     }
 
     private func presented(_ proof: ChatRendererProof) {
-        guard active, fresh, (completionRevision == 0 || completionProven), proof.revision == documentRevision, let conversation,
+        guard active, fresh, (completionRevision == 0 || completionProven || verifiedRevision == documentRevision), proof.revision == documentRevision, let conversation,
               conversation.isStructured, let history = conversation.historyID, !history.isEmpty,
               conversation.turns.contains(where: { $0.role == "assistant" && $0.parts.contains(where: { if case .text(let text, _) = $0 { return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }; return false }) }) else { return }
-        onPresented?(.init(target: target, historyID: history, revision: proof.revision, completionRevision: completionRevision))
+        onPresented?(.init(target: target, historyID: history, revision: proof.revision, completionRevision: completionRevision, verifiedByCurrentPane: verifiedRevision == documentRevision))
     }
 }
