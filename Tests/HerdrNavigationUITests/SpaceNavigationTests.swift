@@ -142,6 +142,8 @@ final class SpaceNavigationTests: XCTestCase {
         }
         app.buttons["spaces.drawer"].tap()
         let space = app.buttons["space.select.space-b"]
+        // Accessibility text can place later rows below the visible drawer.
+        for _ in 0..<3 where !space.isHittable { app.scrollViews["spaces.sidebar"].swipeUp() }
         XCTAssertTrue(space.isHittable)
         XCTAssertGreaterThanOrEqual(space.frame.height, 44)
         space.tap()

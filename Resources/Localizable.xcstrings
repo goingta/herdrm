@@ -6409,6 +6409,22 @@
           }
         }
       }
+    },
+    "Use HTTPS; HTTP service is blocked by iOS transport settings.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use HTTPS; HTTP service is blocked by iOS transport settings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请使用 HTTPS；iOS 的网络安全设置阻止了此 HTTP 服务。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

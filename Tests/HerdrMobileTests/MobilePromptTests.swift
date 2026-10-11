@@ -51,6 +51,30 @@ final class MobilePromptTests: XCTestCase {
         await model.selectedSession?.disconnect()
     }
 
+    func testServiceBindingEditDoesNotAcknowledgeTheNewComposerDraft() async throws {
+        let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let device = MobileDevice(name: "Fixture", host: "fixture.example", username: "developer")
+        store.save([device])
+        let transport = PromptBoundary(succeeds: true)
+        let model = MobileAppModel(store: store, chatCredentialRemover: { _, _ in }, connector: { _ in transport })
+        model.connectSelected()
+        for _ in 0..<100 {
+            if model.selectedTransportReady { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let target = try XCTUnwrap(model.currentPromptTarget)
+        model.setAgentDraft("Same text in changed context", paneID: target.paneID, deviceID: device.id)
+        let send = Task { await model.submitPrompt(target: target) }
+        try await Task.sleep(for: .milliseconds(30))
+        try model.saveChatConfiguration(.init(serviceURL: "https://new-binding.invalid", machineID: "local"), for: device.id)
+        let result = await send.value
+        XCTAssertEqual(result, .targetChanged)
+        XCTAssertEqual(model.agentDraft(paneID: target.paneID, deviceID: device.id), "Same text in changed context")
+        let count = await transport.submissions
+        XCTAssertEqual(count, 1)
+        await model.selectedSession?.disconnect()
+    }
+
 }
 
 private actor PromptBoundary: MobileTransport {

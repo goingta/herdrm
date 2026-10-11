@@ -571,6 +571,7 @@ final class MobileAppModel {
         guard currentPromptTarget == target, selectedAgent != nil, selectedTransportReady,
               let session = selectedSession, let transport = session.transport else { return .unavailable }
         guard !submitting.contains(target) else { return .busy }
+        let bindingGeneration = chatBindingGenerations[target.deviceID]
         let original = agentDraft(paneID: target.paneID, deviceID: target.deviceID)
         let text = ([original.trimmingCharacters(in: .whitespacesAndNewlines)] + attachmentPaths.map { "@" + $0 })
             .filter { !$0.isEmpty }.joined(separator: "\n")
@@ -582,7 +583,8 @@ final class MobileAppModel {
                 "target": .string(target.paneID), "text": .string(text)
             ]))
         } catch { return .failed }
-        guard currentPromptTarget == target, session.transport === transport else { return .targetChanged }
+        guard currentPromptTarget == target, session.transport === transport,
+              chatBindingGenerations[target.deviceID] == bindingGeneration else { return .targetChanged }
         if agentDraft(paneID: target.paneID, deviceID: target.deviceID) == original {
             setAgentDraft("", paneID: target.paneID, deviceID: target.deviceID)
         }
