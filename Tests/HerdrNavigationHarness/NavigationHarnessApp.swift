@@ -11,9 +11,19 @@ struct NavigationHarnessApp: App {
     @Environment(\.scenePhase) private var phase
     init() {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: "herdr.navigation.fixture")!)
-        store.save([MobileDevice(id: UUID(uuidString: "00000000-0000-0000-0000-000000000023")!, name: "远端开发机 · 长中文名称验证操作入口", host: "fixture.example", username: "developer")])
+        var device = MobileDevice(id: UUID(uuidString: "00000000-0000-0000-0000-000000000023")!, name: "远端开发机 · 长中文名称验证操作入口", host: "fixture.example", username: "developer")
+        let chat = ProcessInfo.processInfo.environment["NAV_HARNESS_CHAT"] == "1"
+        if chat { device.chatConfiguration = try! WebChatConfiguration(serviceURL: "https://chat-fixture.invalid/", machineID: "local") }
+        store.save([device])
         let boundary = NavigationHarnessConnector()
-        _model = State(initialValue: MobileAppModel(store: store, connector: { _ in try await boundary.connect() }))
+        if ProcessInfo.processInfo.environment["NAV_HARNESS_DARK"] == "1" { appearance.mode = .dark }
+        _model = State(initialValue: MobileAppModel(store: store,
+            chatCredentialProvider: { _, _ in chat ? .token("controlled-fixture-only") : nil },
+            chatServiceFactory: { configuration, credential in
+                let sessionConfiguration = URLSessionConfiguration.ephemeral
+                sessionConfiguration.protocolClasses = [NavigationChatHTTPBoundary.self]
+                return WebChatService(configuration: configuration, credential: credential, session: URLSession(configuration: sessionConfiguration))
+            }, chatCredentialRemover: { _, _ in }, connector: { _ in try await boundary.connect() }))
     }
     var body: some Scene {
         WindowGroup {
@@ -80,5 +90,32 @@ private actor NavigationHarnessTransport: MobileTransport {
       "agents":[{"workspace_id":"space-a","tab_id":"tab-one","pane_id":"pane-one","agent":"codex","agent_status":"working","name":"same-name"},{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"pane-two","agent":"claude-code","agent_status":"done","name":"same-name"},{"workspace_id":"space-b","tab_id":"tab-other","pane_id":"pane-other","agent":"codex","agent_status":"blocked","name":"same-name"}],
       "panes":[{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"shell-two","terminal_id":"terminal-two","terminal_title":"构建服务 · 普通终端"}]
     }}
+    """
+}
+
+
+/// Authenticated HTTP boundary fixture, never a real user's endpoint or transcript.
+private final class NavigationChatHTTPBoundary: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "chat-fixture.invalid" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let data: Data
+        if request.url!.path.hasSuffix("machines") {
+            data = Data(Self.machines.utf8)
+        } else {
+            let text = "## 真机原型验收\n\n已连接开发机，当前会话只展示这个 Space 的内容。\n\n1. 检查终端模式\n2. 切换聊天模式\n3. 返回后草稿保留\n\n```sh\nprintf 'HERDR_UI_OK\\n'\n```\n\n[打开项目预览](https://example.com)"
+            let object: [String: Any] = ["history_id": "controlled-history", "source": "claude-transcript",
+                "metadata": ["model": "fixture-model", "reasoning_effort": "High"],
+                "turns": [["role": "user", "ts": "2026-10-11T01:00:00Z", "parts": [["kind": "text", "text": "请检查已有 Agent 的界面。"]]],
+                    ["role": "assistant", "ts": "2026-10-11T01:01:00Z", "parts": [["kind": "thinking", "text": "受控夹具中的思考内容。"], ["kind": "text", "text": text]]]]]
+            data = try! JSONSerialization.data(withJSONObject: object)
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+    static let machines = """
+    {"machines":[{"id":"local","name":"Controlled development machine","kind":"local","state":"connected","enabled":true,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space-a"},{"workspace_id":"space-b"}],"tabs":[{"tab_id":"tab-one","workspace_id":"space-a"},{"tab_id":"tab-two","workspace_id":"space-a"},{"tab_id":"tab-other","workspace_id":"space-b"}],"panes":[{"pane_id":"pane-one","tab_id":"tab-one","workspace_id":"space-a"},{"pane_id":"pane-two","tab_id":"tab-two","workspace_id":"space-a"},{"pane_id":"pane-other","tab_id":"tab-other","workspace_id":"space-b"}]}}]}
     """
 }

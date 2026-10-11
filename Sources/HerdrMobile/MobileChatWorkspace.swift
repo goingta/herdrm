@@ -108,11 +108,12 @@ struct MobileChatWorkspace: View {
                 }, send: { paths in await model.submitPrompt(target: target, attachmentPaths: paths) })
         }
         .background(MobileReferenceTheme.background)
-        .onAppear { updateActivity() }
+        .onAppear { updateAppearance(); updateActivity() }
         .onChange(of: visible) { _, _ in updateActivity() }
         .onChange(of: scenePhase) { _, _ in updateActivity() }
         .onChange(of: model.selectedTransportReady) { _, _ in updateActivity() }
         .onChange(of: model.revision) { _, _ in updateActivity() }
+        .onChange(of: model.selectedAgent?.status) { _, _ in controller?.refresh() }
         .onChange(of: colorScheme) { _, _ in updateAppearance() }
         .onChange(of: locale.identifier) { _, _ in updateAppearance() }
         .onChange(of: dynamicTypeSize) { _, _ in updateAppearance() }
@@ -123,7 +124,6 @@ struct MobileChatWorkspace: View {
     private func updateActivity() {
         guard let controller else { return }
         controller.onOpenURL = openURL
-        updateAppearance()
         controller.setActivity(visible: visible, foreground: scenePhase == .active,
             connectionValidated: model.selectedTransportReady && model.currentPromptTarget == target,
             completionRevision: model.chatCompletionRevision(for: target))

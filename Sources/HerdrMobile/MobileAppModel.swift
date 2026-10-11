@@ -704,7 +704,9 @@ final class MobileAppModel {
         guard let index = devices.firstIndex(where: { $0.id == device.id }),
               devices[index].kind == device.kind else { throw MobileDeviceError.deviceNotFound }
         var validated = try device.validated()
-        try savePassword(password, for: validated)
+        if devices[index].authMethod != validated.authMethod || password?.isEmpty == false {
+            try savePassword(password, for: validated)
+        }
         var previousConnection = devices[index]
         previousConnection.name = validated.name
         previousConnection.chatConfiguration = validated.chatConfiguration

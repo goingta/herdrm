@@ -2,6 +2,34 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testActualChatTranscriptAndComposerSurviveModeAndBottomRootSwitches() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["NAV_HARNESS_CHAT"] = "1"
+        app.launchEnvironment["NAV_HARNESS_DARK"] = "1"
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
+        app.launch()
+        XCTAssertTrue(app.webViews["chat.transcript"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["chat.model"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].isSelected)
+        let input = app.textFields["agent.composer"]
+        input.tap()
+        input.typeText("retain across modes")
+        app.buttons["workspace.mode.terminal"].tap()
+        app.buttons["workspace.mode.chat"].tap()
+        XCTAssertEqual(input.value as? String, "retain across modes")
+        app.buttons["tab.preview"].tap()
+        app.buttons["tab.agent"].tap()
+        XCTAssertEqual(input.value as? String, "retain across modes")
+        app.buttons["tab.settings"].tap()
+        app.buttons["tab.agent"].tap()
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "reference-native-controlled-chat"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testReferenceHeaderShowsActualSessionAndModeControlsWithoutExtraWorkspaceHeader() {
         let app = XCUIApplication()
         app.launch()
