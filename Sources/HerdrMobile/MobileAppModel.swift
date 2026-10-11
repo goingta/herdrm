@@ -12,6 +12,14 @@ enum MobileConnectionState: Equatable {
     case failed(String)
 }
 
+struct MobileShellDraftTarget: Hashable {
+    let deviceID: UUID
+    let presentationID: UUID
+    let spaceID: String
+    let tabID: String
+    let paneID: String
+}
+
 struct MobileWorkspaceTab: Identifiable {
     let id: String
     let label: String
@@ -417,6 +425,7 @@ final class MobileAppModel {
     var showAddDevice = false
     var editingDevice: MobileDevice?
     private var agentDrafts: [AgentUnreadKey: String] = [:]
+    private var shellDrafts: [MobileShellDraftTarget: String] = [:]
     private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
     private var submitting: Set<MobilePromptTarget> = []
     private var chatBindingGenerations: [UUID: UUID] = [:]
@@ -612,6 +621,19 @@ final class MobileAppModel {
     private var connectionTaskToken: UUID?
     private var closingTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
+    var currentShellDraftTarget: MobileShellDraftTarget? {
+        guard selectedAgent == nil, let deviceID = selectedDeviceID, let session = selectedSession,
+              let spaceID = selectedSpaceID, let tabID = selectedTabID, let paneID = selectedTerminalPane?.paneID,
+              !selectedTargetUnavailable else { return nil }
+        return MobileShellDraftTarget(deviceID: deviceID, presentationID: session.presentationID,
+            spaceID: spaceID, tabID: tabID, paneID: paneID)
+    }
+
+    func shellDraft(for target: MobileShellDraftTarget) -> String { shellDrafts[target] ?? "" }
+    func setShellDraft(_ text: String, for target: MobileShellDraftTarget) {
+        shellDrafts[target] = text.isEmpty ? nil : text
+    }
+
     func agentDraft(paneID: String, deviceID: UUID) -> String {
         agentDrafts[AgentUnreadKey(deviceID: deviceID, paneID: paneID)] ?? ""
     }
@@ -797,6 +819,7 @@ final class MobileAppModel {
             agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+            shellDrafts = shellDrafts.filter { $0.key.deviceID != device.id }
             invalidateChat(for: device.id)
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
@@ -949,6 +972,7 @@ final class MobileAppModel {
         clearNavigationHistory(for: device.id)
         devices.removeAll { $0.id == device.id }
         agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+        shellDrafts = shellDrafts.filter { $0.key.deviceID != device.id }
         invalidateChat(for: device.id)
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port

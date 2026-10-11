@@ -68,6 +68,7 @@ final class MobileChatCompletionTests: XCTestCase {
             model.showAddDevice = true
             try await Task.sleep(for: .milliseconds(500))
             XCTAssertEqual(controller.renderer.document?.freshContent, false, "Covered actual root must suspend chat polling and read proof")
+            XCTAssertTrue(controller.renderer.webView.accessibilityElementsHidden, "Covered native WK children must be hidden from accessibility")
             XCTAssertTrue(readState.unread.contains(key), "A modal over the actual mounted chat must suppress late read acknowledgement")
             model.showAddDevice = false
             for _ in 0..<120 {

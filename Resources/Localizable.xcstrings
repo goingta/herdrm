@@ -4580,7 +4580,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove this device?"
+            "value": "Remove this development machine?"
           }
         },
         "zh-Hans": {
@@ -5192,7 +5192,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This device's SSH host key changed (%@). If the host was reinstalled, remove and re-add the device."
+            "value": "This development machine's SSH host key changed (%@). If the host was reinstalled, remove and re-add the development machine."
           }
         },
         "zh-Hans": {
@@ -5209,7 +5209,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No password saved for this device."
+            "value": "No password saved for this development machine."
           }
         },
         "zh-Hans": {
@@ -5226,7 +5226,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not resolve the home directory on the device."
+            "value": "Could not resolve the home directory on the development machine."
           }
         },
         "zh-Hans": {
@@ -6534,6 +6534,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "聊天服务：终端回滚内容"
+          }
+        }
+      }
+    },
+    "Input not confirmed. Draft retained; check the terminal before retrying.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Input not confirmed. Draft retained; check the terminal before retrying."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入未确认送达。草稿已保留；重试前请检查终端。"
+          }
+        }
+      }
+    },
+    "Enter text to send to the terminal…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter text to send to the terminal…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入要发送到终端的内容…"
           }
         }
       }
