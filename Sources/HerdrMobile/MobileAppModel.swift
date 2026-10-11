@@ -34,6 +34,18 @@ struct MobilePromptTarget: Hashable {
     let paneID: String
 }
 
+struct MobilePaneContext: Hashable {
+    let deviceID: UUID
+    let presentationID: UUID
+    let spaceID: String
+    let tabID: String
+    let paneID: String
+    init(_ target: MobilePromptTarget) {
+        deviceID = target.deviceID; presentationID = target.presentationID
+        spaceID = target.spaceID; tabID = target.tabID; paneID = target.paneID
+    }
+}
+
 enum MobilePromptResult: Equatable { case acknowledged, failed, targetChanged, unavailable, busy }
 
 /// One device's live herdr view: transport + snapshot + event pump.
@@ -399,12 +411,31 @@ final class MobileAppModel {
     private var rememberedSpaces: [UUID: String] = [:]
     private var rememberedTabs: [SpaceKey: String] = [:]
     private var rememberedPanes: [TabKey: String] = [:]
+    private var completionStatuses: [AgentUnreadKey: AgentStatus] = [:]
+    private var completionRevisions: [AgentUnreadKey: UInt64] = [:]
     private var knownPaneTitles: [AgentUnreadKey: String] = [:]
     var showAddDevice = false
     var editingDevice: MobileDevice?
     private var agentDrafts: [AgentUnreadKey: String] = [:]
     private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
     private var submitting: Set<MobilePromptTarget> = []
+    @ObservationIgnored private var chatDrafts: [MobilePaneContext: MobileChatDraft] = [:]
+
+    func chatDraft(for target: MobilePromptTarget) -> MobileChatDraft {
+        let key = MobilePaneContext(target)
+        if let draft = chatDrafts[key] { return draft }
+        let draft = MobileChatDraft()
+        chatDrafts[key] = draft
+        return draft
+    }
+
+    func invalidateChat(for deviceID: UUID) {
+        for (key, draft) in chatDrafts where key.deviceID == deviceID { draft.invalidate() }
+        chatDrafts = chatDrafts.filter { $0.key.deviceID != deviceID }
+        paneModes = paneModes.filter { $0.key.deviceID != deviceID }
+        completionStatuses = completionStatuses.filter { $0.key.deviceID != deviceID }
+        completionRevisions = completionRevisions.filter { $0.key.deviceID != deviceID }
+    }
 
     var currentPromptTarget: MobilePromptTarget? {
         guard let deviceID = selectedDeviceID, let session = selectedSession,
@@ -485,6 +516,26 @@ final class MobileAppModel {
         selectedDeviceID = devices.first?.id
     }
 
+    private func observeChatCompletions(agents: [AgentInfo], deviceID: UUID, authoritative: Bool) {
+        for agent in agents {
+            let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)
+            if let previous = completionStatuses[key], previous != .done, agent.status == .done {
+                completionRevisions[key, default: 0] &+= 1
+            }
+            completionStatuses[key] = agent.status
+        }
+        if authoritative {
+            let live = Set(agents.map(\.paneID))
+            completionStatuses = completionStatuses.filter { $0.key.deviceID != deviceID || live.contains($0.key.paneID) }
+            completionRevisions = completionRevisions.filter { $0.key.deviceID != deviceID || live.contains($0.key.paneID) }
+        }
+    }
+
+    func chatCompletionRevision(for target: MobilePromptTarget) -> UInt64 {
+        _ = revision
+        return completionRevisions[AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)] ?? 0
+    }
+
     var selectedDevice: MobileDevice? {
         devices.first { $0.id == selectedDeviceID }
     }
@@ -499,6 +550,7 @@ final class MobileAppModel {
             if self.selectedDeviceID == deviceID { self.reconcileNavigation() }
         }
         session.onAgents = { [weak self, weak session] agents, authoritative in
+            self?.observeChatCompletions(agents: agents, deviceID: deviceID, authoritative: authoritative)
             self?.agentReadState.apply(agents: agents, deviceID: deviceID, authoritative: authoritative,
                                       foreground: UIApplication.shared.applicationState == .active && session?.actionsReady == true)
             self?.revision += 1
@@ -595,12 +647,15 @@ final class MobileAppModel {
         try savePassword(password, for: validated)
         var previousConnection = devices[index]
         previousConnection.name = validated.name
+        previousConnection.chatConfiguration = validated.chatConfiguration
+        let chatChanged = devices[index].chatConfiguration != validated.chatConfiguration
+        if chatChanged { invalidateChat(for: device.id) }
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
         if connectionChanged {
             agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
-            paneModes = paneModes.filter { $0.key.deviceID != device.id }
+            invalidateChat(for: device.id)
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
             obsolete?.onChange = nil
@@ -749,7 +804,7 @@ final class MobileAppModel {
         clearNavigationHistory(for: device.id)
         devices.removeAll { $0.id == device.id }
         agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
-        paneModes = paneModes.filter { $0.key.deviceID != device.id }
+        invalidateChat(for: device.id)
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
         }) {

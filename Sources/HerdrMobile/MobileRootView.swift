@@ -120,7 +120,6 @@ struct MobileRootView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("herdrm").font(.headline)
                     DeviceSwitcherMenu(model: model).buttonStyle(.plain)
                     Spacer()
                     Button { drawerShown = false } label: {

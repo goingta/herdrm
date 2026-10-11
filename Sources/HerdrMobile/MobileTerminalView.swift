@@ -129,7 +129,7 @@ final class MobileAttachSession: ObservableObject {
         // An unchanged grid does not reliably generate SIGWINCH on Linux.
         // Briefly change the PTY grid, then restore the latest actual viewport;
         // this asks the TUI to repaint explicit RGB cells without reattaching.
-        if wasConfigured, let channel, let grid = lastGrid {
+        if wasConfigured, presentationVisible, let channel, let grid = lastGrid {
             let previous = appearanceRedrawTask
             appearanceRedrawTask = Task { [weak self] in
                 await previous?.value
@@ -483,17 +483,20 @@ struct MobileTerminalScreen: View {
             session.onReadStateChanged = onReadStateChanged
         }
         .onChange(of: ObjectIdentifier(transport)) { _, _ in
-            if transportReady { session.replaceTransport(transport) }
+            if transportReady, agentTabVisible { session.replaceTransport(transport) }
         }
         .onChange(of: transportReady) { _, value in
             session.transportReady = value
-            guard value else { return }
+            guard value, agentTabVisible else { return }
             session.replaceTransport(transport)
             if case .ended = session.status { session.stop() }
             session.start()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
-        .onChange(of: agentTabVisible) { _, value in session.presentationVisible = value }
+        .onChange(of: agentTabVisible) { _, value in
+            session.presentationVisible = value
+            if value, transportReady { session.replaceTransport(transport); session.start() }
+        }
     }
 
     private var terminalBackground: SwiftUI.Color {
