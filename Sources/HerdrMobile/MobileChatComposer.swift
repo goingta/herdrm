@@ -53,6 +53,7 @@ struct MobileChatComposer: View {
     @State private var choosingFile = false
     @State private var choosingPhoto = false
     @State private var photo: PhotosPickerItem?
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -79,7 +80,8 @@ struct MobileChatComposer: View {
             VStack(spacing: 10) {
                 Capsule().fill(MobileReferenceTheme.border).frame(width: 32, height: 3)
                 TextField(placeholder, text: $text, axis: .vertical)
-                    .font(.body).lineLimit(2...5).textFieldStyle(.plain)
+                    .focused($inputFocused)
+                    .mobileFont(.input).lineLimit(2...5).textFieldStyle(.plain)
                     .foregroundStyle(MobileReferenceTheme.text).tint(MobileReferenceTheme.accent)
                     .accessibilityIdentifier("agent.composer")
                 HStack(spacing: 8) {
@@ -100,7 +102,7 @@ struct MobileChatComposer: View {
                                 BrandIcon(resource: resource, size: 16)
                             }
                             Text([modelName, reasoningEffort].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).lineLimit(2).accessibilityIdentifier("chat.model")
+                                .mobileFont(.metadata).lineLimit(2).accessibilityIdentifier("chat.model")
                         }
                         .padding(.horizontal, 10).padding(.vertical, 8)
                         .background(MobileReferenceTheme.panel, in: Capsule())
@@ -125,6 +127,7 @@ struct MobileChatComposer: View {
         }
         .padding(.horizontal, 12).padding(.top, 5).padding(.bottom, 10)
         .background(MobileReferenceTheme.panel)
+        .onReceive(NotificationCenter.default.publisher(for: MobileKeyboardDismissal.notification)) { _ in inputFocused = false }
         .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { importFile(url) }
         }

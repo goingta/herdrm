@@ -508,6 +508,7 @@ struct MobileTerminalScreen: View {
     @State private var keyboardShown = false
     @State private var submitting = false
     @State private var promptError = false
+    @FocusState private var composerFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
     private let title: String
     private let transport: MobileTransport
@@ -538,13 +539,16 @@ struct MobileTerminalScreen: View {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
+                    .overlay {
+                        if transportReady, case .ended(let reason) = session.status { endedOverlay(reason) }
+                    }
+                    // Recovery belongs to the display: the keyboard can shrink
+                    // it, but the overlay must never cover the input controls.
+                    .clipped().contentShape(Rectangle())
                 if agentTabVisible {
                     if session.refreshFailed { Text(AppLocalization.string("Could Not Refresh Terminal")).font(.caption).foregroundStyle(MobileReferenceTheme.dim).padding(6) }
                     controls.disabled(!transportReady)
                 }
-            }
-            if transportReady, case .ended(let reason) = session.status {
-                endedOverlay(reason)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -568,6 +572,11 @@ struct MobileTerminalScreen: View {
         }
         .onChange(of: refreshRevision) { _, _ in Task { await session.refreshScreen() } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in session.hidePresentedContent() }
+        .onReceive(NotificationCenter.default.publisher(for: MobileKeyboardDismissal.notification)) { _ in
+            composerFocused = false
+            keyboardShown = false
+        }
+        .onChange(of: composerFocused) { _, focused in if focused { keyboardShown = false } }
         .onChange(of: agentTabVisible) { _, value in
             session.presentationVisible = value
             if value, transportReady { session.replaceTransport(transport); session.start() }
@@ -628,6 +637,8 @@ struct MobileTerminalScreen: View {
                 text: draft,
                 axis: .vertical
             )
+            .focused($composerFocused)
+            .mobileFont(.input)
             .lineLimit(1...4)
             .textFieldStyle(.plain)
             .padding(.horizontal, 12)
@@ -843,7 +854,7 @@ private struct KeyChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.callout.monospaced().weight(.medium))
+                .mobileFont(.keyboard, weight: .medium)
                 .foregroundStyle(pressed ? MobileReferenceTheme.accent : MobileReferenceTheme.dim)
                 .frame(minWidth: 50)
                 .frame(minHeight: 44)

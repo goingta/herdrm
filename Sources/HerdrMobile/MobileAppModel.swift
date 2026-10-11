@@ -62,6 +62,7 @@ final class MobileDeviceSession {
     var device: MobileDevice
     var state: MobileConnectionState = .idle
     var snapshot: SessionSnapshot?
+    private var gitBranches: [String: (path: String, branch: String?, checked: ContinuousClock.Instant)] = [:]
     private(set) var transport: MobileTransport?
     private var eventTask: Task<Void, Never>?
     private var refreshDebounceTask: Task<Void, Never>?
@@ -145,6 +146,49 @@ final class MobileDeviceSession {
         refreshRequested = false
     }
 
+    func gitBranch(for spaceID: String) -> String? {
+        guard let entry = gitBranches[spaceID], entry.path == checkoutPath(for: spaceID) else { return nil }
+        return entry.branch
+    }
+
+    /// Requested only while the drawer is visible; does not hold up snapshots,
+    /// terminal attachment or foreground connection validation.
+    func refreshGitBranches() async {
+        guard actionsReady, let transport, let snapshot else { return }
+        let connection = connectionID
+        let epoch = snapshotEpoch
+        for space in snapshot.workspaces {
+            guard !Task.isCancelled, self.transport === transport, connectionID == connection, snapshotEpoch == epoch else { return }
+            guard let path = checkoutPath(for: space.workspaceID) else {
+                gitBranches.removeValue(forKey: space.workspaceID); continue
+            }
+            if let entry = gitBranches[space.workspaceID], entry.path == path,
+               entry.checked.duration(to: .now) < .seconds(30) { continue }
+            let branch = try? await transport.gitBranch(at: path)
+            guard !Task.isCancelled, self.transport === transport, connectionID == connection, snapshotEpoch == epoch,
+                  checkoutPath(for: space.workspaceID) == path else { return }
+            gitBranches[space.workspaceID] = (path, branch, .now)
+            onChange?()
+        }
+    }
+
+    private func checkoutPath(for spaceID: String) -> String? {
+        guard let snapshot else { return nil }
+        let space = snapshot.workspaces.first { $0.workspaceID == spaceID }
+        if let path = space?.worktree?.checkoutPath, path.hasPrefix("/") { return path }
+        let agents = snapshot.agents.filter { $0.workspaceID == spaceID }
+        let panes = (snapshot.panes ?? []).filter { $0.workspaceID == spaceID }
+        // The remote focused pane is authoritative when several panes have
+        // different working directories; otherwise prefer the active tab.
+        let candidates = [agents.first { $0.paneID == snapshot.focusedPaneID }?.cwd,
+                          panes.first { $0.paneID == snapshot.focusedPaneID }?.cwd,
+                          agents.first { $0.tabID == space?.activeTabID && $0.cwd != nil }?.cwd,
+                          panes.first { $0.tabID == space?.activeTabID && $0.cwd != nil }?.cwd]
+            + agents.sorted { $0.paneID < $1.paneID }.map(\.cwd)
+            + panes.sorted { $0.paneID < $1.paneID }.map(\.cwd)
+        return candidates.compactMap { $0 }.first { $0.hasPrefix("/") }
+    }
+
     var onChange: (() -> Void)?
     var onAgents: (([AgentInfo], Bool) -> Void)?
     var onConnectionLost: (() -> Void)?
@@ -164,6 +208,7 @@ final class MobileDeviceSession {
             let token = UUID()
             connectToken = token
             connectionID = UUID()
+            gitBranches.removeAll()
             onConnectionLost?()
             state = .connecting
             let oldTransport = self.transport
@@ -225,6 +270,7 @@ final class MobileDeviceSession {
     }
 
     private func invalidateConnection() -> MobileTransport? {
+        gitBranches.removeAll()
         onConnectionLost?()
         validationToken = nil
         validationTask?.cancel()
@@ -1157,6 +1203,13 @@ final class MobileAppModel {
         _ = revision
         return selectedSession?.snapshot?.workspaces ?? []
     }
+
+    func spaceGitBranch(_ spaceID: String) -> String? {
+        _ = revision
+        return selectedSession?.gitBranch(for: spaceID)
+    }
+
+    func refreshSpaceGitBranches() async { await selectedSession?.refreshGitBranches() }
 
     /// Agents in the selected space (nil = all), waiting-on-you first —
     /// the same Blocked > Done > Working > Idle order as the Mac app and Heeler.
