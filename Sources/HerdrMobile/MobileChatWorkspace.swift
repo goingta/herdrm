@@ -96,16 +96,18 @@ struct MobileChatWorkspace: View {
                 .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
                 .foregroundStyle(MobileReferenceTheme.dim)
             }
-            MobileChatComposer(text: draft, state: state, modelName: controller?.metadata?.model,
-                reasoningEffort: controller?.metadata?.reasoningEffort, enabled: visible && model.selectedTransportReady,
-                upload: { data, name, contentType in
-                    guard let controller, model.currentPromptTarget == target, model.selectedTransportReady else {
-                        throw WebChatError.missingCredential
-                    }
-                    let attachment = try await controller.service.upload(for: controller.target, data: data, contentType: contentType, name: name)
-                    guard model.currentPromptTarget == target else { throw WebChatError.staleResponse }
-                    return attachment.path
-                }, send: { paths in await model.submitPrompt(target: target, attachmentPaths: paths) })
+            if visible {
+                MobileChatComposer(text: draft, state: state, agentKind: model.selectedAgent?.agent, modelName: controller?.metadata?.model,
+                    reasoningEffort: controller?.metadata?.reasoningEffort, enabled: visible && model.selectedTransportReady,
+                    upload: { data, name, contentType in
+                        guard let controller, model.currentPromptTarget == target, model.selectedTransportReady else {
+                            throw WebChatError.missingCredential
+                        }
+                        let attachment = try await controller.service.upload(for: controller.target, data: data, contentType: contentType, name: name)
+                        guard model.currentPromptTarget == target else { throw WebChatError.staleResponse }
+                        return attachment.path
+                    }, send: { paths in await model.submitPrompt(target: target, attachmentPaths: paths) })
+            }
         }
         .background(MobileReferenceTheme.background)
         .onAppear { updateAppearance(); updateActivity() }

@@ -80,6 +80,8 @@ enum Theme {
 
     #endif
 
+    static let unread = dynamic(hex(0x2563EB), hex(0x3B82F6))
+
     /// Distinct tints for device chips (deliberately avoids the status colors).
     static let devicePalette: [Color] = [
         dynamic(hex(0x7C3AED), hex(0x8B5CF6)),  // violet

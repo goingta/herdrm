@@ -13,9 +13,10 @@ struct MobileRootView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .leading) {
+            VStack(spacing: 0) {
+                topBar
+                ZStack(alignment: .leading) {
                 VStack(spacing: 0) {
-                    topBar
                     if !model.workspaceTabs.isEmpty { tabStrip }
                     terminalDetail.frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay(alignment: .top) {
@@ -35,6 +36,7 @@ struct MobileRootView: View {
                             drawer.frame(width: min(340, proxy.size.width * 0.86))
                         }
                     }
+                }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -159,7 +161,7 @@ struct MobileRootView: View {
                         drawerShown = false
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "folder").foregroundStyle(Theme.accent)
+                            Image(systemName: "folder").foregroundStyle(MobileReferenceTheme.dim)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(space.label).font(.body).foregroundStyle(Theme.text)
                                 Text("#\(space.number)").font(.caption).foregroundStyle(Theme.textSecondary)
@@ -319,15 +321,15 @@ struct MobileRootView: View {
         switch model.selectedConnectionState {
         case .idle: AppLocalization.string("Disconnected")
         case .connecting: AppLocalization.string("Connecting…")
-        case .connected: AppLocalization.string("Connected")
+        case .connected: model.selectedTransportReady ? AppLocalization.string("Connected") : AppLocalization.string("Restoring Terminal…")
         case .failed: AppLocalization.string("Connection Failed")
         }
     }
     private var connectionSymbol: String {
-        switch model.selectedConnectionState { case .connected: "checkmark.circle"; case .failed: "exclamationmark.circle"; default: "arrow.triangle.2.circlepath" }
+        switch model.selectedConnectionState { case .connected: model.selectedTransportReady ? "checkmark.circle" : "arrow.triangle.2.circlepath"; case .failed: "exclamationmark.circle"; default: "arrow.triangle.2.circlepath" }
     }
     private var connectionColor: Color {
-        switch model.selectedConnectionState { case .connected: Theme.success; case .failed: Theme.danger; default: Theme.textSecondary }
+        switch model.selectedConnectionState { case .connected: model.selectedTransportReady ? Theme.success : Theme.textSecondary; case .failed: Theme.danger; default: Theme.textSecondary }
     }
     private func composerDraft(paneID: String) -> Binding<String> {
         guard let deviceID = model.selectedDeviceID else { return .constant("") }

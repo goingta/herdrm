@@ -44,6 +44,7 @@ final class MobileChatDraft {
 struct MobileChatComposer: View {
     @Binding var text: String
     @Bindable var state: MobileChatDraft
+    let agentKind: String?
     let modelName: String?
     let reasoningEffort: String?
     let enabled: Bool
@@ -77,7 +78,7 @@ struct MobileChatComposer: View {
             }
             VStack(spacing: 10) {
                 Capsule().fill(MobileReferenceTheme.border).frame(width: 32, height: 3)
-                TextField(AppLocalization.string("Message the agent…"), text: $text, axis: .vertical)
+                TextField(placeholder, text: $text, axis: .vertical)
                     .font(.body).lineLimit(2...5).textFieldStyle(.plain)
                     .foregroundStyle(MobileReferenceTheme.text).tint(MobileReferenceTheme.accent)
                     .accessibilityIdentifier("agent.composer")
@@ -94,11 +95,15 @@ struct MobileChatComposer: View {
                     .accessibilityIdentifier("chat.attachments")
                     Spacer(minLength: 0)
                     if let modelName, !modelName.isEmpty {
-                        Text([modelName, reasoningEffort].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).lineLimit(2)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                            .background(MobileReferenceTheme.panel, in: Capsule())
-                            .accessibilityIdentifier("chat.model")
+                        HStack(spacing: 6) {
+                            if let agentKind, let resource = BrandIconLoader.agentIcon(for: agentKind) {
+                                BrandIcon(resource: resource, size: 16)
+                            }
+                            Text([modelName, reasoningEffort].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).lineLimit(2).accessibilityIdentifier("chat.model")
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(MobileReferenceTheme.panel, in: Capsule())
                     }
                     Button { submit() } label: {
                         if state.submitting { ProgressView().tint(Color(red: 0.106, green: 0.078, blue: 0.027)) }
@@ -135,6 +140,14 @@ struct MobileChatComposer: View {
                 } catch { state.error = AppLocalization.string("Attachment upload failed. Your draft was retained.") }
                 photo = nil
             }
+        }
+    }
+
+    private var placeholder: String {
+        switch agentKind {
+        case "claude", "claude-code": AppLocalization.string("Message Claude…")
+        case "codex": AppLocalization.string("Message Codex…")
+        default: AppLocalization.string("Message the agent…")
         }
     }
 

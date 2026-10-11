@@ -16,7 +16,6 @@ struct NavigationHarnessApp: App {
         if chat { device.chatConfiguration = try! WebChatConfiguration(serviceURL: "https://chat-fixture.invalid/", machineID: "local") }
         store.save([device])
         let boundary = NavigationHarnessConnector()
-        if ProcessInfo.processInfo.environment["NAV_HARNESS_DARK"] == "1" { appearance.mode = .dark }
         _model = State(initialValue: MobileAppModel(store: store,
             chatCredentialProvider: { _, _ in chat ? .token("controlled-fixture-only") : nil },
             chatServiceFactory: { configuration, credential in
@@ -24,6 +23,7 @@ struct NavigationHarnessApp: App {
                 sessionConfiguration.protocolClasses = [NavigationChatHTTPBoundary.self]
                 return WebChatService(configuration: configuration, credential: credential, session: URLSession(configuration: sessionConfiguration))
             }, chatCredentialRemover: { _, _ in }, connector: { _ in try await boundary.connect() }))
+        if ProcessInfo.processInfo.environment["NAV_HARNESS_DARK"] == "1" { appearance.mode = .dark }
     }
     var body: some Scene {
         WindowGroup {

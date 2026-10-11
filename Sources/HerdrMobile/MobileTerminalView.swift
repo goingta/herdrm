@@ -467,7 +467,7 @@ struct MobileTerminalScreen: View {
             terminalBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 MobileTerminalHost(session: session, keyboardShown: $keyboardShown, presentationVisible: agentTabVisible)
-                controls.disabled(!transportReady)
+                if agentTabVisible { controls.disabled(!transportReady) }
             }
             if transportReady, case .ended(let reason) = session.status {
                 endedOverlay(reason)

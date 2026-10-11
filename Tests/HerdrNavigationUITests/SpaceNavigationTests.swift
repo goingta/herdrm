@@ -7,7 +7,7 @@ final class SpaceNavigationTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["NAV_HARNESS_CHAT"] = "1"
         app.launchEnvironment["NAV_HARNESS_DARK"] = "1"
-        app.launchArguments += ["-AppleLanguages", "(zh-Hans)"]
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-app.language", "zh-Hans"]
         app.launch()
         XCTAssertTrue(app.webViews["chat.transcript"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["chat.model"].waitForExistence(timeout: 8))
@@ -66,7 +66,7 @@ final class SpaceNavigationTests: XCTestCase {
     func testAuthoritativeDeletedPaneShowsUnavailableUntilUserChoosesAnotherPane() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-app.language", "en"]
         app.launchEnvironment["NAV_HARNESS_DELETED_PANE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["workspace.panes"].waitForExistence(timeout: 5))
@@ -156,7 +156,7 @@ final class SpaceNavigationTests: XCTestCase {
     func testSelectedTerminalShowsRecoveryAndFailureAfterReturningFromBackground() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-app.language", "en"]
         app.launchEnvironment["NAV_HARNESS_RECONNECT_FAILURE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["workspace.panes"].waitForExistence(timeout: 5))
