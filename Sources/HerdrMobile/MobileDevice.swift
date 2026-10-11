@@ -37,6 +37,7 @@ struct MobileDevice: Codable, Identifiable, Hashable {
     var gatewayPort: UInt16
     /// Socket path override; nil means ~/.config/herdr/herdr.sock on the host.
     var socketPath: String?
+    var chatConfiguration: WebChatConfiguration?
 
     init(
         id: UUID = UUID(),
@@ -49,7 +50,8 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         socketPath: String? = nil,
         sshRoute: SSHRoute = .direct,
         gatewayHost: String = "",
-        gatewayPort: UInt16 = 8080
+        gatewayPort: UInt16 = 8080,
+        chatConfiguration: WebChatConfiguration? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -62,6 +64,7 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         self.sshRoute = sshRoute
         self.gatewayHost = gatewayHost
         self.gatewayPort = gatewayPort
+        self.chatConfiguration = chatConfiguration
     }
 
     /// Devices stored before the tailcat kind existed decode as SSH.
@@ -78,12 +81,14 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         sshRoute = try container.decodeIfPresent(SSHRoute.self, forKey: .sshRoute) ?? .direct
         gatewayHost = try container.decodeIfPresent(String.self, forKey: .gatewayHost) ?? ""
         gatewayPort = try container.decodeIfPresent(UInt16.self, forKey: .gatewayPort) ?? 8080
+        chatConfiguration = try container.decodeIfPresent(WebChatConfiguration.self, forKey: .chatConfiguration)
     }
 
     var isTailcat: Bool { kind == .tailcat }
 
     func validated() throws -> MobileDevice {
         var result = self
+        result.chatConfiguration = try chatConfiguration?.validated()
         result.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if kind == .ssh {
             result.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
