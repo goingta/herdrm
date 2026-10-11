@@ -101,6 +101,61 @@ final class WebChatServiceTests: XCTestCase {
         } catch { XCTAssertEqual(error as? WebChatError, .historyChanged) }
     }
 
+    func testLateOlderPageCannotReplaceNewHistory() async throws {
+        let olderRequested = expectation(description: "Old page held at HTTP boundary")
+        var latestCount = 0
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            let older = request.url?.query?.contains("before=") == true
+            if older { olderRequested.fulfill() } else { latestCount += 1 }
+            let history = older || latestCount == 1 ? "old-history" : "new-history"
+            return (200, ["ETag": history], Data("{\"source\":\"claude-transcript\",\"history_id\":\"\(history)\",\"turns\":[]}".utf8))
+        }
+        WebChatHTTPFixture.shouldHold = { $0.url?.query?.contains("before=") == true }
+        defer { WebChatHTTPFixture.shouldHold = nil; WebChatHTTPFixture.release() }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        let older = Task { try await service.conversation(for: Self.target, page: .before("older")) }
+        await fulfillment(of: [olderRequested], timeout: 2)
+        let latest = try await service.conversation(for: Self.target)
+        XCTAssertTrue(latest.historyReplaced)
+        WebChatHTTPFixture.release()
+        do { _ = try await older.value; XCTFail("A late page must not revert new history") }
+        catch { XCTAssertEqual(error as? WebChatError, .historyChanged) }
+    }
+
+    @MainActor
+    func testFailedSettingsSaveRestoresTheOriginalCredential() async throws {
+        let binding = try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local")
+        let device = MobileDevice(name: "Linux", host: "linux.example", username: "developer", chatConfiguration: binding)
+        defer { try? WebChatSecretStore.removeCredential(for: binding, nativeDeviceID: device.id) }
+        try WebChatSecretStore.setCredential(.token("original-fixture"), for: binding, nativeDeviceID: device.id)
+        let model = WebChatSettingsModel(device: device, session: fixtureSession { _ in (200, [:], Self.machineJSON) })
+        model.token = "replacement-fixture"
+        try await model.signIn()
+        XCTAssertThrowsError(try model.save(using: { _ in throw WebChatError.invalidConfiguration }))
+        XCTAssertEqual(WebChatSecretStore.credential(for: binding, nativeDeviceID: device.id), .token("original-fixture"))
+        let saved = try model.save(using: { _ in })
+        XCTAssertEqual(saved.credentialID, binding.credentialID)
+        XCTAssertEqual(WebChatSecretStore.credential(for: binding, nativeDeviceID: device.id), .token("replacement-fixture"))
+    }
+
+    func testCursorGapPagingUsesExactBeforeAndSinceWithoutTimestampGuessing() async throws {
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            if request.url?.query?.contains("before=") == true {
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                XCTAssertEqual(query?.first { $0.name == "before" }?.value, "cursor-new")
+                XCTAssertEqual(query?.first { $0.name == "since" }?.value, "cursor-old")
+            }
+            return (200, [:], Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"cursor\":\"cursor-new\",\"turns\":[]}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        let page = try await service.conversation(for: Self.target, page: .between(before: "cursor-new", since: "cursor-old"))
+        XCTAssertEqual(page.conversation.historyID, "history-a")
+    }
+
     private static let target = WebChatTarget(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space-a", tabID: "tab-a", paneID: "pane-a")
     private static let machineJSON = Data("""
     {"machines":[{"id":"local","name":"Fixture Linux","kind":"local","enabled":true,"state":"connected","error":null,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space-a"}],"tabs":[{"tab_id":"tab-a","workspace_id":"space-a"}],"panes":[{"pane_id":"pane-a","tab_id":"tab-a","workspace_id":"space-a"}]}}]}
@@ -118,16 +173,32 @@ final class WebChatServiceTests: XCTestCase {
 /// External HTTP boundary only: product service parsing/auth/identity/cache remain real.
 private final class WebChatHTTPFixture: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, [String:String], Data))?
+    static var shouldHold: ((URLRequest) -> Bool)?
+    private static var held: (() -> Void)?
+    private static let replyLock = NSLock()
+    private var stopped = false
+    private let stateLock = NSLock()
+    static func release() {
+        replyLock.lock(); let reply = held; held = nil; replyLock.unlock()
+        reply?()
+    }
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "chat.example" }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             let (status, headers, data) = try Self.handler!(request)
             let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
+            let reply = { [self] in
+                stateLock.lock(); let active = !stopped; stateLock.unlock()
+                guard active else { return }
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            }
+            if Self.shouldHold?(request) == true {
+                Self.replyLock.lock(); Self.held = reply; Self.replyLock.unlock()
+            } else { reply() }
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
-    override func stopLoading() {}
+    override func stopLoading() { stateLock.lock(); stopped = true; stateLock.unlock() }
 }

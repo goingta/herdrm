@@ -48,21 +48,21 @@ enum WebChatError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidConfiguration: return "Enter an HTTP(S) service address without credentials, query, or fragment, and choose its machine."
-        case .missingCredential: return "Sign in to the chat service with its token or pairing code."
-        case .unauthorized: return "Chat service sign-in expired or was refused. Sign in again."
-        case .forbidden: return "The chat service denied this operation. Check this credential's access."
-        case .incompatible: return "This chat service does not support the required conversation protocol."
-        case .machineUnavailable: return "The bound chat machine is disconnected or unavailable."
-        case .targetMismatch: return "The selected Space, Tab, and pane do not belong to the bound chat machine. Check the binding."
-        case .historyChanged: return "The conversation history changed. Refresh before loading older content."
-        case .staleResponse: return "The chat target changed. This response was discarded."
-        case .attachmentTooLarge: return "Choose a file no larger than 8 MiB."
-        case .invalidAttachment: return "The attachment is empty or its file type/name is invalid."
-        case .unsafeRedirect: return "The chat service redirected the request. Its credential was not forwarded."
-        case .invalidResponse: return "The chat service returned an unreadable response."
-        case .server(let status, let code): return "Chat service error (HTTP \(status), \(code))."
-        case .transport: return "The chat service could not be reached. Check its address and network, then retry."
+        case .invalidConfiguration: return AppLocalization.string("Enter an HTTP(S) service address without credentials, query, or fragment, and choose its machine.")
+        case .missingCredential: return AppLocalization.string("Sign in to the chat service with its token or pairing code.")
+        case .unauthorized: return AppLocalization.string("Chat service sign-in expired or was refused. Sign in again.")
+        case .forbidden: return AppLocalization.string("The chat service denied this operation. Check this credential's access.")
+        case .incompatible: return AppLocalization.string("This chat service does not support the required conversation protocol.")
+        case .machineUnavailable: return AppLocalization.string("The bound chat machine is disconnected or unavailable.")
+        case .targetMismatch: return AppLocalization.string("The selected Space, Tab, and pane do not belong to the bound chat machine. Check the binding.")
+        case .historyChanged: return AppLocalization.string("The conversation history changed. Refresh before loading older content.")
+        case .staleResponse: return AppLocalization.string("The chat target changed. This response was discarded.")
+        case .attachmentTooLarge: return AppLocalization.string("Choose a file no larger than 8 MiB.")
+        case .invalidAttachment: return AppLocalization.string("The attachment is empty or its file type/name is invalid.")
+        case .unsafeRedirect: return AppLocalization.string("The chat service redirected the request. Its credential was not forwarded.")
+        case .invalidResponse: return AppLocalization.string("The chat service returned an unreadable response.")
+        case .server(let status, let code): return AppLocalization.string("Chat service error (HTTP \(status), \(code)).")
+        case .transport: return AppLocalization.string("The chat service could not be reached. Check its address and network, then retry.")
         }
     }
 }
