@@ -33,3 +33,9 @@ UI fixture 的 SSH attach 为受控不可用，渲染/键盘是实际生产控�
 横屏实际 composer 输入、返回竖屏后的 Ctrl 原动作/外点收回、前台恢复及原位置无残留通过：`/private/tmp/herdr-usability-landscape-roundtrip-green.log`，结果包 `Test-HerdrNavigationAcceptance-2026.10.11_21-00-50-+0800.xcresult`。边界：旋转可能关闭 Ghostty 键盘，测试采用先横屏再打开；横屏软件键盘下，既有 chrome 最小高度会使顶栏及部分快捷键暂时不可达。本轮没有改动竖向 chrome，也不声称该状态所有控件可达。无需新键盘 inset；因此原生输入框已有避让不被重复 padding。
 
 **最终同源码实际 UI batch：10 项、0 failures、112.168s**。`/private/tmp/herdr-usability-ui-complete-final.log`，结果包 `/private/tmp/herdr-usability-dd/Logs/Test/Test-HerdrNavigationAcceptance-2026.10.11_21-01-43-+0800.xcresult`。其中 VisualAcceptanceTests 8 个新反馈/诊断回归，SpaceNavigationTests 2 个长名称和快捷键回归。该批替代早先不完整或失败的同类 UI batch；不与其相加。共享模型 8 项和 Mac build 的最终源码保持不变，采用上文独立结果；真机仍待主代理安装和用户验收。
+
+## 集成审查与真机更新
+
+最终源 `825c848` 经 merger 无冲突集成为 `3d9012b33a81b220ecb03adeadd372fadadae479`，树内容相同。独立 Standards / Spec 审查各 0 项，正式 Info.plist 与 project.yml 无差异。
+
+2026-10-11 已在连接的 iPhone 13 / iOS 18.7.3 构建、更新安装正式 `dev.bybee.herdrm.ios`，保留原数据和 Keychain；构建日志 `/private/tmp/herdr-usability-final-device-build.log`，BUILD SUCCEEDED。安装成功，自动启动失败：CoreDevice 10002 / FBS Security（签名、权限或用户未信任）。本机完整签名校验通过，个人 Team `NHN8A752UN`，provisioning profile 包含该手机且有效至 2026-10-17。已请用户手动打开 App 并核对手机上的开发者信任/验证状态，再验收三项修正；安装不能替代实际 UI 验收。
