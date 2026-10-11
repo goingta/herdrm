@@ -44,7 +44,7 @@ enum WebChatError: Error, LocalizedError, Equatable {
     case machineUnavailable, targetMismatch, historyChanged, staleResponse
     case attachmentTooLarge, invalidAttachment, unsafeRedirect, invalidResponse
     case server(status: Int, code: String)
-    case transport
+    case transport, httpRestricted
 
     var errorDescription: String? {
         switch self {
@@ -62,6 +62,7 @@ enum WebChatError: Error, LocalizedError, Equatable {
         case .unsafeRedirect: return AppLocalization.string("The chat service redirected the request. Its credential was not forwarded.")
         case .invalidResponse: return AppLocalization.string("The chat service returned an unreadable response.")
         case .server(let status, let code): return AppLocalization.string("Chat service error (HTTP \(status), \(code)).")
+        case .httpRestricted: return AppLocalization.string("Use HTTPS; HTTP service is blocked by iOS transport settings.")
         case .transport: return AppLocalization.string("The chat service could not be reached. Check its address and network, then retry.")
         }
     }

@@ -1,4 +1,5 @@
 import XCTest
+import Network
 @testable import HerdrMobile
 
 final class WebChatServiceTests: XCTestCase {
@@ -107,12 +108,13 @@ final class WebChatServiceTests: XCTestCase {
         let session = fixtureSession { request in
             if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
             let older = request.url?.query?.contains("before=") == true
-            if older { olderRequested.fulfill() } else { latestCount += 1 }
+            if !older { latestCount += 1 }
             let history = older || latestCount == 1 ? "old-history" : "new-history"
             return (200, ["ETag": history], Data("{\"source\":\"claude-transcript\",\"history_id\":\"\(history)\",\"turns\":[]}".utf8))
         }
         WebChatHTTPFixture.shouldHold = { $0.url?.query?.contains("before=") == true }
-        defer { WebChatHTTPFixture.shouldHold = nil; WebChatHTTPFixture.release() }
+        WebChatHTTPFixture.onHeld = { olderRequested.fulfill() }
+        defer { WebChatHTTPFixture.shouldHold = nil; WebChatHTTPFixture.onHeld = nil; WebChatHTTPFixture.release() }
         let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
         _ = try await service.conversation(for: Self.target)
         let older = Task { try await service.conversation(for: Self.target, page: .before("older")) }
@@ -156,6 +158,150 @@ final class WebChatServiceTests: XCTestCase {
         XCTAssertEqual(page.conversation.historyID, "history-a")
     }
 
+    func testBrowsingManyPagesReleasesOlderAnswersButKeepsLatestValidation() async throws {
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            if request.value(forHTTPHeaderField: "If-None-Match") != nil { return (304, [:], Data()) }
+            return (200, ["ETag":"fixture-version"], Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"turns\":[]}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        for index in 0..<35 { _ = try await service.conversation(for: Self.target, page: .before("older-\(index)")) }
+        let latest = try await service.conversation(for: Self.target)
+        XCTAssertTrue(latest.notModified)
+        let old = try await service.conversation(for: Self.target, page: .before("older-0"))
+        XCTAssertFalse(old.notModified, "Discarded pages must be revalidated without retaining their old cached body")
+    }
+
+    func testAnOversizedHTTPBodyIsRejectedBeforeAllocatingItsDeclaredSize() async throws {
+        let session = fixtureSession { _ in (200, ["Content-Length":"999999999"], Self.machineJSON) }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        do { _ = try await service.machines(); XCTFail("A declared oversized body must be refused") }
+        catch { XCTAssertEqual(error as? WebChatError, .invalidResponse) }
+    }
+
+    func testBytePressureReleasesLargeOlderPagesWithoutLosingLatestHistoryProof() async throws {
+        let text = String(repeating: "x", count: 5 * 1024 * 1024)
+        let response = Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"turns\":[{\"role\":\"assistant\",\"ts\":null,\"parts\":[{\"kind\":\"text\",\"text\":\"\(text)\"}]}]}".utf8)
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            return request.value(forHTTPHeaderField: "If-None-Match") != nil ? (304, [:], Data()) : (200, ["ETag":"large-fixture"], response)
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        _ = try await service.conversation(for: Self.target, page: .before("large-older"))
+        let latest = try await service.conversation(for: Self.target)
+        XCTAssertTrue(latest.notModified, "Latest history proof remains useful under cache pressure")
+        let older = try await service.conversation(for: Self.target, page: .before("large-older"))
+        XCTAssertFalse(older.notModified, "Large old pages are released instead of evicting current history proof")
+    }
+
+    func testConfiguredMachineUsesExactRemoteRouteAndNeverFallsBackToLocal() async throws {
+        var mismatch = false
+        let remoteMachines = String(decoding: Self.machineJSON, as: UTF8.self)
+            .replacingOccurrences(of: "\"local\"", with: "\"remote-a\"")
+            .replacingOccurrences(of: "\"protocol\":22", with: "\"protocol\":23")
+        let session = fixtureSession { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-only")
+            if request.url?.path == "/proxy/api/machines" {
+                let snapshot = mismatch ? remoteMachines.replacingOccurrences(of: "space-a", with: "different-space") : remoteMachines
+                return (200, [:], Data(snapshot.utf8))
+            }
+            XCTAssertFalse(mismatch, "Target mismatch must prevent a pane request")
+            XCTAssertEqual(request.url?.path, "/proxy/api/machines/remote-a/pane/conversation")
+            return (200, [:], Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"turns\":[]}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/proxy/", machineID: "remote-a"), credential: .token("fixture-only"), session: session)
+        let answer = try await service.conversation(for: Self.target)
+        XCTAssertEqual(answer.conversation.historyID, "history-a")
+        mismatch = true
+        do { _ = try await service.conversation(for: Self.target); XCTFail("Same pane ID in another Space must not be accepted") }
+        catch { XCTAssertEqual(error as? WebChatError, .targetMismatch) }
+    }
+
+    func testAuthenticationErrorsNeverPresentReflectedCredentials() async throws {
+        let session = fixtureSession { _ in (401, [:], Data("Reflected fixture-secret-value".utf8)) }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-secret-value"), session: session)
+        do { _ = try await service.machines(); XCTFail("Unauthorized service must require sign-in") }
+        catch {
+            XCTAssertEqual(error as? WebChatError, .unauthorized)
+            XCTAssertFalse(error.localizedDescription.contains("fixture-secret-value"))
+            XCTAssertFalse(error.localizedDescription.contains("Reflected"))
+        }
+    }
+
+    func testInvalidationRejectsAnInflightAnswerAndClearsItsETag() async throws {
+        let held = expectation(description: "Response held at the HTTP boundary")
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            XCTAssertNil(request.value(forHTTPHeaderField: "If-None-Match"))
+            return (200, ["ETag":"fixture-version"], Data("{\"source\":\"claude-transcript\",\"history_id\":\"history-a\",\"turns\":[]}".utf8))
+        }
+        WebChatHTTPFixture.shouldHold = { $0.url?.path == "/api/pane/conversation" }
+        WebChatHTTPFixture.onHeld = { held.fulfill() }
+        defer { WebChatHTTPFixture.shouldHold = nil; WebChatHTTPFixture.onHeld = nil; WebChatHTTPFixture.release() }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        let waiting = Task { try await service.conversation(for: Self.target) }
+        await fulfillment(of: [held], timeout: 2)
+        await service.invalidate()
+        WebChatHTTPFixture.release()
+        do { _ = try await waiting.value; XCTFail("An invalidated response must not be published") }
+        catch { XCTAssertEqual(error as? WebChatError, .staleResponse) }
+        WebChatHTTPFixture.shouldHold = nil
+        WebChatHTTPFixture.onHeld = nil
+        let current = try await service.conversation(for: Self.target)
+        XCTAssertFalse(current.notModified)
+    }
+
+    func testHistoryConflictRequiresFreshLatestWithoutOldETag() async throws {
+        var conversationCount = 0
+        let session = fixtureSession { request in
+            if request.url?.path == "/api/machines" { return (200, [:], Self.machineJSON) }
+            conversationCount += 1
+            if conversationCount == 2 {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "If-None-Match"), "old-version")
+                return (409, [:], Data("{\"error\":\"history_changed\"}".utf8))
+            }
+            XCTAssertNil(request.value(forHTTPHeaderField: "If-None-Match"))
+            let history = conversationCount == 1 ? "old-history" : "new-history"
+            return (200, ["ETag":"old-version"], Data("{\"source\":\"claude-transcript\",\"history_id\":\"\(history)\",\"turns\":[]}".utf8))
+        }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "https://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        _ = try await service.conversation(for: Self.target)
+        do { _ = try await service.conversation(for: Self.target); XCTFail("A replaced history must be surfaced") }
+        catch { XCTAssertEqual(error as? WebChatError, .historyChanged) }
+        let current = try await service.conversation(for: Self.target)
+        XCTAssertEqual(current.conversation.historyID, "new-history")
+    }
+
+    func testProductionSessionRefusesRedirectBeforeForwardingCredentials() async throws {
+        let destinationReached = expectation(description: "Redirect destination must never be contacted")
+        destinationReached.isInverted = true
+        let destinationReady = expectation(description: "Redirect destination listening")
+        let destination = try WebChatLoopbackServer(response: "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", ready: { destinationReady.fulfill() }, request: { _ in destinationReached.fulfill() })
+        defer { destination.stop() }
+        await fulfillment(of: [destinationReady], timeout: 2)
+        let destinationPort = try XCTUnwrap(destination.port)
+        let originReady = expectation(description: "Redirect origin listening")
+        let origin = try WebChatLoopbackServer(response: "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:\(destinationPort)/other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", ready: { originReady.fulfill() }, request: { request in
+            XCTAssertTrue(request.contains("Authorization: Bearer fixture-redirect-only"))
+        })
+        defer { origin.stop() }
+        await fulfillment(of: [originReady], timeout: 2)
+        let originPort = try XCTUnwrap(origin.port)
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "http://127.0.0.1:\(originPort)/", machineID: "local"), credential: .token("fixture-redirect-only"))
+        do { _ = try await service.machines(); XCTFail("The real URLSession must refuse redirects") }
+        catch { XCTAssertEqual(error as? WebChatError, .unsafeRedirect) }
+        await fulfillment(of: [destinationReached], timeout: 0.3)
+    }
+
+    func testNativeHTTPRestrictionPresentsAnActionableHTTPSInstruction() async throws {
+        let session = fixtureSession { _ in throw URLError(.appTransportSecurityRequiresSecureConnection) }
+        let service = WebChatService(configuration: try WebChatConfiguration(serviceURL: "http://chat.example/", machineID: "local"), credential: .token("fixture-only"), session: session)
+        do { _ = try await service.machines(); XCTFail("Native HTTP restrictions must be surfaced") }
+        catch { XCTAssertEqual(error as? WebChatError, .httpRestricted) }
+    }
+
     private static let target = WebChatTarget(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space-a", tabID: "tab-a", paneID: "pane-a")
     private static let machineJSON = Data("""
     {"machines":[{"id":"local","name":"Fixture Linux","kind":"local","enabled":true,"state":"connected","error":null,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space-a"}],"tabs":[{"tab_id":"tab-a","workspace_id":"space-a"}],"panes":[{"pane_id":"pane-a","tab_id":"tab-a","workspace_id":"space-a"}]}}]}
@@ -174,6 +320,7 @@ final class WebChatServiceTests: XCTestCase {
 private final class WebChatHTTPFixture: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, [String:String], Data))?
     static var shouldHold: ((URLRequest) -> Bool)?
+    static var onHeld: (() -> Void)?
     private static var held: (() -> Void)?
     private static let replyLock = NSLock()
     private var stopped = false
@@ -197,8 +344,32 @@ private final class WebChatHTTPFixture: URLProtocol {
             }
             if Self.shouldHold?(request) == true {
                 Self.replyLock.lock(); Self.held = reply; Self.replyLock.unlock()
+                Self.onHeld?()
             } else { reply() }
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() { stateLock.lock(); stopped = true; stateLock.unlock() }
+}
+
+/// Real URLSession boundary for redirect protection. Binds only loopback, uses fixture secrets.
+private final class WebChatLoopbackServer {
+    private let listener: NWListener
+    private let queue = DispatchQueue(label: "herdr.chat.redirect.fixture")
+    var port: UInt16? { listener.port?.rawValue }
+
+    init(response: String, ready: @escaping () -> Void, request: @escaping (String) -> Void) throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        listener = try NWListener(using: parameters)
+        listener.stateUpdateHandler = { state in if case .ready = state { ready() } }
+        listener.newConnectionHandler = { [queue] connection in
+            connection.start(queue: queue)
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, _, _ in
+                if let data { request(String(decoding: data, as: UTF8.self)) }
+                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
+            }
+        }
+        listener.start(queue: queue)
+    }
+    func stop() { listener.cancel() }
 }
