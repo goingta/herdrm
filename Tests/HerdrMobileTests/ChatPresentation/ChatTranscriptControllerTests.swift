@@ -95,6 +95,42 @@ final class ChatTranscriptControllerTests: XCTestCase {
         await fulfillment(of: [rejected], timeout: 0.3)
     }
 
+    func testOversizedHistoryKeepsLatestTurnsAndReportsExplicitMemoryLimit() async throws {
+        let fixture = TranscriptHTTPFixture()
+        fixture.useLargeHistory()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        defer { controller.invalidate() }
+        await controller.refreshNow()
+        XCTAssertEqual(controller.conversation?.turns.count, 1000)
+        XCTAssertEqual(controller.renderer.document?.turns.last?.parts.first?.text, "reply 1000")
+        XCTAssertEqual(controller.renderer.document?.historyLimited, true)
+        XCTAssertNil(controller.conversation?.cursor)
+    }
+
+    func testKnownEmptyHistoryCanProveFirstCompletedReply() async throws {
+        let fixture = TranscriptHTTPFixture()
+        fixture.useEmptyHistory()
+        let controller = ChatTranscriptController(target: .init(nativeDeviceID: UUID(), presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "pane"), service: try fixture.service())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        controller.renderer.webView.frame = window.bounds
+        host.view.addSubview(controller.renderer.webView)
+        window.makeKeyAndVisible()
+        defer { controller.invalidate(); window.isHidden = true }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 0)
+        await controller.refreshNow()
+        controller.observeAgentWorking(true)
+        fixture.setReply("First completed reply in the same verified history")
+        controller.observeAgentWorking(false)
+        let ready = expectation(description: "Known empty baseline does not require an old assistant reply")
+        controller.onPresented = { proof in if proof.completionRevision == 1 { ready.fulfill() } }
+        controller.setActivity(visible: true, foreground: true, connectionValidated: true, completionRevision: 1)
+        await controller.refreshNow()
+        await fulfillment(of: [ready], timeout: 3)
+    }
+
     func testDistinctTurnsWithSameProviderTimestampSurviveRefresh() async throws {
         let fixture = TranscriptHTTPFixture()
         fixture.useRepeatedTimestamp()
@@ -141,17 +177,30 @@ final class ChatTranscriptControllerTests: XCTestCase {
 private final class TranscriptHTTPFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var replaced = false
+    private var emptyHistory = false
+    func useEmptyHistory() { lock.withLock { emptyHistory = true } }
+    private var largeHistory = false
+    func useLargeHistory() { lock.withLock { largeHistory = true } }
     private var advanced = false
     func advanceWindow() { lock.withLock { advanced = true } }
     private var repeatedTimestamp = false
     func useRepeatedTimestamp() { lock.withLock { repeatedTimestamp = true } }
     private var reply = "latest answer"
-    func setReply(_ text: String) { lock.withLock { reply = text } }
+    func setReply(_ text: String) { lock.withLock { reply = text; emptyHistory = false } }
     func replaceHistory() { lock.withLock { replaced = true } }
     func service() throws -> WebChatService {
         TranscriptURLProtocol.handler = { [self] request in
             if request.url!.path.hasSuffix("machines") {
                 return #"{"machines":[{"id":"local","name":"Fixture","kind":"local","state":"connected","enabled":true,"snapshot":{"protocol":22,"workspaces":[{"workspace_id":"space"}],"tabs":[{"tab_id":"tab","workspace_id":"space"}],"panes":[{"pane_id":"pane","tab_id":"tab","workspace_id":"space"}]}}]}"#
+            }
+            if lock.withLock({ emptyHistory }) {
+                return #"{"history_id":"first","source":"claude-transcript","cursor":null,"turns":[]}"#
+            }
+            if lock.withLock({ largeHistory }) {
+                let turns = (0...1000).map { index in
+                    ["role":"assistant", "ts":"2026-10-10T01:01:00Z", "parts":[["kind":"text", "text":"reply \(index)"]]] as [String: Any]
+                }
+                return String(decoding: try! JSONSerialization.data(withJSONObject: ["history_id":"large", "source":"claude-transcript", "turns":turns]), as: UTF8.self)
             }
             if lock.withLock({ repeatedTimestamp }) {
                 return #"{"history_id":"repeated","source":"claude-transcript","cursor":null,"turns":[{"role":"assistant","ts":"2026-10-10T01:01:00Z","parts":[{"kind":"text","text":"first distinct reply"}]},{"role":"assistant","ts":"2026-10-10T01:01:00Z","parts":[{"kind":"text","text":"second distinct reply"}]}]}"#

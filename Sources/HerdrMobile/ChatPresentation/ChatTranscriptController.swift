@@ -42,6 +42,8 @@ final class ChatTranscriptController {
     private var active = false
     private var valid = true
     private var epoch = UUID()
+    private var referenceTasks: [String: (UUID, Task<Void, Never>)] = [:]
+    private var referenceOrder: [String] = []
     private var pollTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
     private var completionRevision: UInt64 = 0
@@ -56,12 +58,15 @@ final class ChatTranscriptController {
     private var hasLoadedOlder = false
     private(set) var historyLimitReached = false
     private var heldFrom: String?
+    private var needsLatestReset = false
     private struct ReplyIdentity: Equatable { let history: String?; let fingerprint: String }
     private var completionBaseline: ReplyIdentity?
+    private var completionBaselineHistory: String?
     private var hasCompletionBaseline = false
     private var completionProven = false
     private var agentWorking = false
     private var workingBaseline: ReplyIdentity?
+    private var workingBaselineHistory: String?
     private var hasWorkingBaseline = false
 
     /// Called synchronously before activity updates, so a final HTTP reply that arrives
@@ -69,6 +74,7 @@ final class ChatTranscriptController {
     func observeAgentWorking(_ working: Bool) {
         if working && !agentWorking {
             workingBaseline = latestReply(conversation)
+            workingBaselineHistory = conversation?.historyID
             hasWorkingBaseline = conversation != nil
         }
         agentWorking = working
@@ -91,7 +97,7 @@ final class ChatTranscriptController {
               conversation.isStructured, let history = conversation.historyID, !history.isEmpty else { return }
         let text = conversation.turns.reversed().filter { $0.role == "assistant" }.lazy.compactMap { turn in
             turn.parts.reversed().compactMap { part -> String? in
-                if case .text(let text, let phase) = part, phase != "commentary", !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+                if case .text(let text, let phase) = part, (phase == nil || phase == "final_answer"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
                 return nil
             }.first
         }.first
@@ -131,6 +137,7 @@ final class ChatTranscriptController {
         if self.completionRevision != completionRevision {
             self.completionRevision = completionRevision
             completionBaseline = hasWorkingBaseline ? workingBaseline : latestReply(conversation)
+            completionBaselineHistory = hasWorkingBaseline ? workingBaselineHistory : conversation?.historyID
             hasCompletionBaseline = hasWorkingBaseline || conversation != nil
             hasWorkingBaseline = false
             completionProven = false
@@ -152,6 +159,8 @@ final class ChatTranscriptController {
             epoch = UUID()
             pollTask?.cancel(); pollTask = nil
             fetchTask?.cancel(); fetchTask = nil
+            for (_, task) in referenceTasks.values { task.cancel() }
+            referenceTasks.removeAll(); referenceOrder.removeAll()
             isLoadingOlder = false
         }
     }
@@ -172,7 +181,7 @@ final class ChatTranscriptController {
         let expected = epoch
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.fetch(page: self.heldFrom.map(WebChatPage.from) ?? .latest, expected: expected)
+            await self.fetch(page: self.needsLatestReset ? .latest : self.heldFrom.map(WebChatPage.from) ?? .latest, expected: expected)
         }
         fetchTask = task
         await task.value
@@ -224,9 +233,11 @@ final class ChatTranscriptController {
             }
             guard expected == epoch, active, !Task.isCancelled else { return }
             let incoming = result.conversation
-            let replaced = cursorInvalidated || result.historyReplaced || conversation.map { $0.historyID != incoming.historyID } == true
+            guard let encoded = try? JSONEncoder().encode(incoming), encoded.count <= 8 * 1024 * 1024 else { throw WebChatError.invalidResponse }
+            let replaced = needsLatestReset || cursorInvalidated || result.historyReplaced || conversation.map { $0.historyID != incoming.historyID } == true
             let prepended: Bool
             if replaced {
+                needsLatestReset = false
                 olderTurns = []; currentTurns = []; heldFrom = nil
                 olderCursor = incoming.cursor; hasLoadedOlder = false; historyLimitReached = false
             }
@@ -237,7 +248,9 @@ final class ChatTranscriptController {
                 prepended = true
             } else {
                 if !replaced, let held = heldFrom, let start = incoming.cursor, held != start, incoming.isStructured {
-                    let gap = try await turnsBetween(held: held, start: start, history: incoming.historyID, expected: expected)
+                    let gap: [WebChatTurn]
+                    do { gap = try await turnsBetween(held: held, start: start, history: incoming.historyID, expected: expected) }
+                    catch { needsLatestReset = true; throw error }
                     guard expected == epoch, active, !Task.isCancelled else { return }
                     olderTurns += gap
                     hasLoadedOlder = true
@@ -249,27 +262,41 @@ final class ChatTranscriptController {
             }
             // Keep the latest page and at most 1000 total turns. The user sees an explicit
             // limit notice rather than an endlessly loading older-page control.
+            if currentTurns.count > 1000 { historyLimitReached = true }
             currentTurns = Array(currentTurns.suffix(1000))
             let capacity = max(0, 1000 - currentTurns.count)
             if olderTurns.count > capacity {
                 olderTurns = Array(olderTurns.suffix(capacity))
                 historyLimitReached = true
             }
+            // Bound retained text bytes as well as turn count. Eviction is explicit, and
+            // latest turns are retained; no unbounded page accumulation crosses the bridge.
+            while !olderTurns.isEmpty {
+                let bytes = (try? JSONEncoder().encode(olderTurns + currentTurns).count) ?? Int.max
+                if bytes <= 8 * 1024 * 1024 { break }
+                olderTurns.removeFirst(max(1, olderTurns.count / 2))
+                historyLimitReached = true
+            }
+            let latestMetadata: WebChatMetadata?
+            if case .before = page, !replaced { latestMetadata = incoming.metadata ?? conversation?.metadata }
+            else { latestMetadata = incoming.metadata }
             conversation = WebChatConversation(source: incoming.source, historyID: incoming.historyID,
-                turns: olderTurns + currentTurns, cursor: historyLimitReached ? nil : olderCursor, metadata: incoming.metadata)
+                turns: olderTurns + currentTurns, cursor: historyLimitReached ? nil : olderCursor, metadata: latestMetadata)
             state = incoming.isStructured ? .ready : .degraded
             if completionRevision > 0 {
                 let reply = latestReply(conversation)
                 if replaced || !hasCompletionBaseline {
                     completionBaseline = reply
+                    completionBaselineHistory = conversation?.historyID
                     hasCompletionBaseline = true
                     completionProven = false
                 } else {
-                    completionProven = reply != nil && reply?.history == completionBaseline?.history && reply != completionBaseline
+                    completionProven = reply != nil && reply?.history == completionBaselineHistory && reply != completionBaseline
                 }
             }
             if agentWorking && !hasWorkingBaseline {
                 workingBaseline = latestReply(conversation)
+                workingBaselineHistory = conversation?.historyID
                 hasWorkingBaseline = true
             }
             fresh = true
@@ -288,6 +315,7 @@ final class ChatTranscriptController {
         var pages: [[WebChatTurn]] = []
         var before = start
         var visited: Set<String> = []
+        var accumulatedBytes = 0
         for _ in 0..<32 {
             if before == held { return pages.flatMap { $0 } }
             guard visited.insert(before).inserted else { throw WebChatError.invalidResponse }
@@ -295,6 +323,8 @@ final class ChatTranscriptController {
             guard expected == epoch, active, !Task.isCancelled else { throw CancellationError() }
             guard !result.historyReplaced, result.conversation.historyID == history,
                   let cursor = result.conversation.cursor else { throw WebChatError.historyChanged }
+            accumulatedBytes += (try? JSONEncoder().encode(result.conversation.turns).count) ?? Int.max / 2
+            guard accumulatedBytes <= 8 * 1024 * 1024 else { throw WebChatError.invalidResponse }
             pages.insert(result.conversation.turns, at: 0)
             guard pages.reduce(0, { $0 + $1.count }) <= 1000 else { throw WebChatError.invalidResponse }
             before = cursor
@@ -324,7 +354,7 @@ final class ChatTranscriptController {
         document.freshContent = fresh && active && conversation.isStructured
         document.readinessAllowed = document.freshContent && (completionRevision == 0 || completionProven || verifiedRevision == documentRevision)
         document.theme = theme; document.language = language; document.textScale = textScale
-        document.labels = language == "zh" ? ["thinking":"思考过程", "copy":"复制", "fullOutput":"加载完整输出", "image":"加载图片", "unknown":"暂不支持的内容", "older":"加载更早的消息", "empty":"暂无聊天记录", "degraded":"当前为终端回滚降级内容，服务未提供结构化聊天。"] : [:]
+        document.labels = language == "zh" ? ["thinking":"思考过程", "copy":"复制", "fullOutput":"加载完整输出", "image":"加载图片", "unknown":"暂不支持的内容", "older":"加载更早的消息", "empty":"暂无聊天记录", "degraded":"当前为终端回滚降级内容，服务未提供结构化聊天。", "limit":"为限制内存，较早的消息已释放。此页面最多保留最近 1000 条记录。"] : [:]
         // Bound display memory independently of the HTTP boundary. Never send an oversized
         // transcript across the native bridge; retain the previous readable page on failure.
         guard let data = try? JSONEncoder().encode(document), data.count <= 8 * 1024 * 1024 else {
@@ -353,7 +383,7 @@ final class ChatTranscriptController {
         guard let conversation, conversation.isStructured else { return nil }
         for turn in conversation.turns.reversed() where turn.role == "assistant" {
             let text = turn.parts.compactMap { part -> String? in
-                if case .text(let text, let phase) = part, phase != "commentary", !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+                if case .text(let text, let phase) = part, (phase == nil || phase == "final_answer"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
                 return nil
             }.joined(separator: "\n\n")
             if !text.isEmpty {
@@ -366,24 +396,38 @@ final class ChatTranscriptController {
 
     private func loadReference(_ ref: String, key: String, proof: ChatRendererProof, image: Bool) {
         guard active, let history = conversation?.historyID, history == proof.historyID else { return }
+        guard referenceTasks[key] == nil else { return }
+        if referenceOrder.count >= 4, let oldest = referenceOrder.first {
+            referenceTasks.removeValue(forKey: oldest)?.1.cancel()
+            referenceOrder.removeFirst()
+        }
         let expected = epoch
-        Task { [weak self] in
+        let taskID = UUID()
+        referenceOrder.append(key)
+        let task = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if self.referenceTasks[key]?.0 == taskID {
+                    self.referenceTasks.removeValue(forKey: key)
+                    self.referenceOrder.removeAll { $0 == key }
+                }
+            }
             do {
                 if image {
                     let result = try await service.image(for: target, ref: ref, historyID: history)
-                    guard self.active, self.epoch == expected, self.conversation?.historyID == history else { return }
-                    self.renderer.displayImage(result.data, contentType: result.contentType, key: key, proof: proof)
+                    guard self.active, !Task.isCancelled, self.epoch == expected, self.conversation?.historyID == history else { return }
+                    self.renderer.displayImage(result.data, contentType: result.contentType, key: key, ref: ref, proof: proof)
                 } else {
                     let output = try await service.toolOutput(for: target, ref: ref, historyID: history)
-                    guard self.active, self.epoch == expected, self.conversation?.historyID == history else { return }
-                    self.renderer.displayToolOutput(output, key: key, proof: proof)
+                    guard self.active, !Task.isCancelled, self.epoch == expected, self.conversation?.historyID == history else { return }
+                    self.renderer.displayToolOutput(output, key: key, ref: ref, proof: proof)
                 }
             } catch {
-                guard self.active, self.epoch == expected, self.conversation?.historyID == history else { return }
-                self.renderer.displayReferenceError((error as? WebChatError)?.localizedDescription ?? "Content unavailable. Retry.", key: key, proof: proof)
+                guard self.active, !Task.isCancelled, self.epoch == expected, self.conversation?.historyID == history else { return }
+                self.renderer.displayReferenceError((error as? WebChatError)?.localizedDescription ?? "Content unavailable. Retry.", key: key, ref: ref, proof: proof)
             }
         }
+        referenceTasks[key] = (taskID, task)
     }
 
     private func presented(_ proof: ChatRendererProof) {

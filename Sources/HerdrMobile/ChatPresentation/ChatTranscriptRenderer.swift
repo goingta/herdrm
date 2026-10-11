@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftUI
 import UIKit
 import WebKit
@@ -144,20 +145,54 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
 
     func requestVisibleProof() { if loaded { call("requestProof", arguments: []) } }
 
-    func displayImage(_ data: Data, contentType: String, key: String, proof: ChatRendererProof) {
-        guard matches(proof), ["image/png", "image/jpeg", "image/gif", "image/webp"].contains(contentType),
-              data.count <= 8 * 1024 * 1024, UIImage(data: data) != nil else { return }
-        call("image", arguments: [key, data.base64EncodedString(), contentType])
+    func displayImage(_ data: Data, contentType: String, key: String, ref: String? = nil, proof: ChatRendererProof) {
+        guard matchesReference(key: key, ref: ref, proof: proof) else { return }
+        guard ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/heic"].contains(contentType.lowercased()),
+              data.count <= 8 * 1024 * 1024,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = properties[kCGImagePropertyPixelWidth as String] as? Double,
+              let height = properties[kCGImagePropertyPixelHeight as String] as? Double,
+              width > 0, height > 0, width * height <= 40_000_000,
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 1600,
+                  kCGImageSourceCreateThumbnailWithTransform: true
+              ] as CFDictionary), let png = UIImage(cgImage: thumbnail).pngData(), png.count <= 8 * 1024 * 1024 else {
+            call("error", arguments: [key, document?.language == "zh" ? "无法显示这张图片。请重试或在服务端查看原图。" : "This image cannot be displayed. Retry or view the original on the service."])
+            return
+        }
+        call("image", arguments: [key, png.base64EncodedString(), "image/png"])
     }
 
-    func displayToolOutput(_ text: String, key: String, proof: ChatRendererProof) {
-        guard matches(proof) else { return }
-        call("tool", arguments: [key, String(text.prefix(2_000_000))])
+    func displayToolOutput(_ text: String, key: String, ref: String? = nil, proof: ChatRendererProof) {
+        guard matchesReference(key: key, ref: ref, proof: proof) else { return }
+        var displayed = String(text.prefix(500_000))
+        if text.count > 500_000 {
+            displayed += document?.language == "zh"
+                ? "\n\n[已达到手机显示上限。剩余输出请在服务端查看。]"
+                : "\n\n[Phone display limit reached. View the remaining output on the service.]"
+        }
+        call("tool", arguments: [key, displayed])
     }
 
-    func displayReferenceError(_ message: String, key: String, proof: ChatRendererProof) {
-        guard matches(proof) else { return }
+    func displayReferenceError(_ message: String, key: String, ref: String? = nil, proof: ChatRendererProof) {
+        guard matchesReference(key: key, ref: ref, proof: proof) else { return }
         call("error", arguments: [key, message])
+    }
+
+    private func matchesReference(key: String, ref: String?, proof: ChatRendererProof) -> Bool {
+        guard let document, document.targetKey == proof.targetKey, document.historyID == proof.historyID else { return false }
+        guard let ref else { return matches(proof) }
+        // A poll changes the document revision without changing a validated opaque ref.
+        // The exact part key/ref must still belong to the currently displayed history.
+        for (index, turn) in document.turns.enumerated() {
+            for (partIndex, part) in turn.parts.enumerated() {
+                let partKey = "\(turn.key ?? turn.timestamp ?? String(index)):\(partIndex):\(part.kind)"
+                if key == partKey && ref == part.ref { return true }
+            }
+        }
+        return false
     }
 
     private func matches(_ proof: ChatRendererProof) -> Bool {
@@ -200,7 +235,10 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
             onPresented?(proof)
         case "older": onLoadOlder?()
         case "copy":
-            if let text = body["text"] as? String, text.utf8.count <= 4_000_000 { UIPasteboard.general.string = text }
+            if let text = body["text"] as? String, text.utf8.count <= 4_000_000 {
+                UIPasteboard.general.string = text
+                if let key = body["key"] as? String, key.count <= 32 { call("copied", arguments: [key]) }
+            }
         case "image", "tool":
             guard let ref = body["ref"] as? String, ref.count <= 4096, let key = body["key"] as? String else { return }
             if kind == "image" { onImage?(ref, key, proof) } else { onToolOutput?(ref, key, proof) }
