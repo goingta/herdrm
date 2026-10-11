@@ -14,3 +14,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font
 .chat-degraded { color:var(--text-dim); font-size:13px; } #bottom { position:fixed; bottom:16px; right:16px; min-width:44px; border:1px solid var(--border-strong); border-radius:50%; color:var(--text); background:var(--bg-elevated); display:none; }
 .markdown a { color:var(--accent); } .markdown-table-wrap { overflow:auto; max-width:100%; } table { border-collapse:collapse; } td,th { padding:8px; border:1px solid var(--border); }
 .chat-part-unsupported { color:var(--text-dim); border-left:2px solid var(--border); padding:8px; font-size:13px; }
+
+.chat-meta-btn { display:inline-flex; align-items:center; gap:6px; }
+.copy-icon { width:16px; height:16px; display:inline-block; position:relative; }
+.copy-icon::before,.copy-icon::after { content:""; position:absolute; width:10px; height:10px; border:1.4px solid currentColor; border-radius:2px; }
+.copy-icon::before { top:0; left:0; }.copy-icon::after { top:4px; left:4px; background:var(--bg); }
+.is-copied .copy-icon::before { display:none; }.is-copied .copy-icon::after { width:6px; height:11px; border:0; border-right:2px solid currentColor; border-bottom:2px solid currentColor; border-radius:0; transform:rotate(40deg); background:transparent; top:0; }

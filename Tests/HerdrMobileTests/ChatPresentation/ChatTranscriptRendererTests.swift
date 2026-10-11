@@ -68,6 +68,61 @@ final class ChatTranscriptRendererTests: XCTestCase {
         XCTAssertEqual(top ?? 0, 240, accuracy: 2)
     }
 
+    func testValidatedImageSurvivesFreshRevisionButCannotCrossHistory() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var document = ChatRenderDocument(targetKey: "pane", historyID: "first", revision: "request-start", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "image", ref: "opaque-image")], key: "turn")
+        ])
+        renderer.present(document)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Load image") == true }
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).pngData { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+        }
+        let proof = ChatRendererProof(targetKey: "pane", historyID: "first", revision: "request-start")
+        document.revision = "fresh-poll"
+        renderer.present(document)
+        renderer.displayImage(image, contentType: "image/png", key: "turn:0:image", ref: "opaque-image", proof: proof)
+        try await Task.sleep(for: .milliseconds(200))
+        let before = try await renderer.webView.evaluateJavaScript("document.querySelectorAll('.chat-image').length") as? Int
+        XCTAssertEqual(before, 1)
+        document.historyID = "replacement"
+        document.revision = "replacement"
+        renderer.present(document)
+        renderer.displayImage(image, contentType: "image/png", key: "turn:0:image", ref: "opaque-image", proof: proof)
+        try await Task.sleep(for: .milliseconds(200))
+        let after = try await renderer.webView.evaluateJavaScript("document.querySelectorAll('.chat-image').length") as? Int
+        XCTAssertEqual(after, 0)
+    }
+
+    func testCopyControlsUseReferenceGlyphAndNativePlainTextWithoutExecutingHTML() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        renderer.present(.init(targetKey: "pane", historyID: "history", revision: "copy", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "text", text: "**Bold** and `code`.\n\n<script>window.attacked=1</script>")])
+        ]))
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Bold") == true }
+        let icon = try await renderer.webView.evaluateJavaScript("document.querySelector('.copy-icon') !== null") as? Bool
+        XCTAssertEqual(icon, true)
+        _ = try await renderer.webView.evaluateJavaScript("[...document.querySelectorAll('.chat-meta-btn')].find(b=>b.textContent.includes('TXT')).click()")
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(UIPasteboard.general.string?.hasPrefix("Bold and code.") == true)
+        let executed = try await renderer.webView.evaluateJavaScript("Boolean(window.attacked)") as? Bool
+        XCTAssertEqual(executed, false)
+    }
+
     private func waitForPage(_ renderer: ChatTranscriptRenderer, _ condition: (Any?) -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(10)
         while ContinuousClock.now < deadline {
