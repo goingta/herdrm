@@ -419,6 +419,7 @@ final class MobileAppModel {
     private var agentDrafts: [AgentUnreadKey: String] = [:]
     private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
     private var submitting: Set<MobilePromptTarget> = []
+    private var chatBindingGenerations: [UUID: UUID] = [:]
     @ObservationIgnored private var chatDrafts: [MobilePaneContext: MobileChatDraft] = [:]
 
     func chatDraft(for target: MobilePromptTarget) -> MobileChatDraft {
@@ -429,7 +430,19 @@ final class MobileAppModel {
         return draft
     }
 
+    func chatBindingGeneration(for deviceID: UUID) -> UUID? { chatBindingGenerations[deviceID] }
+
+    func saveChatConfiguration(_ configuration: WebChatConfiguration?, for deviceID: UUID) throws {
+        guard var device = devices.first(where: { $0.id == deviceID }) else { throw MobileDeviceError.deviceNotFound }
+        device.chatConfiguration = configuration
+        try updateDevice(device)
+        // Re-authenticating an unchanged binding replaces the immutable service credential too.
+        invalidateChat(for: deviceID)
+        revision += 1
+    }
+
     func invalidateChat(for deviceID: UUID) {
+        chatBindingGenerations[deviceID] = UUID()
         for (key, draft) in chatDrafts where key.deviceID == deviceID { draft.invalidate() }
         chatDrafts = chatDrafts.filter { $0.key.deviceID != deviceID }
         paneModes = paneModes.filter { $0.key.deviceID != deviceID }
@@ -489,6 +502,9 @@ final class MobileAppModel {
     let agentReadState: AgentReadState
     private let store: MobileDeviceStore
     private let connector: MobileTransportConnector
+    let chatCredentialProvider: (WebChatConfiguration, UUID) -> WebChatCredential?
+    let chatServiceFactory: (WebChatConfiguration, WebChatCredential) -> WebChatService
+    private let chatCredentialRemover: (WebChatConfiguration, UUID) throws -> Void
     private var sessions: [UUID: MobileDeviceSession] = [:]
     private var connectionTask: Task<Void, Never>?
     private var connectionTaskToken: UUID?
@@ -503,7 +519,14 @@ final class MobileAppModel {
         agentDrafts[key] = text.isEmpty ? nil : text
     }
 
-    init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil, connector: @escaping MobileTransportConnector = { device in
+    init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil,
+         chatCredentialProvider: @escaping (WebChatConfiguration, UUID) -> WebChatCredential? = {
+             WebChatSecretStore.credential(for: $0, nativeDeviceID: $1)
+         },
+         chatServiceFactory: @escaping (WebChatConfiguration, WebChatCredential) -> WebChatService = { WebChatService(configuration: $0, credential: $1) },
+         chatCredentialRemover: @escaping (WebChatConfiguration, UUID) throws -> Void = {
+             try WebChatSecretStore.removeCredential(for: $0, nativeDeviceID: $1)
+         }, connector: @escaping MobileTransportConnector = { device in
         switch device.kind {
         case .ssh: return try await SSHDirectTransport.connect(device: device)
         case .tailcat: return try await TailcatMobileTransport.connect(device: device)
@@ -512,6 +535,9 @@ final class MobileAppModel {
         agentReadState = readState ?? AgentReadState()
         self.store = store ?? MobileDeviceStore()
         self.connector = connector
+        self.chatServiceFactory = chatServiceFactory
+        self.chatCredentialProvider = chatCredentialProvider
+        self.chatCredentialRemover = chatCredentialRemover
         devices = self.store.load()
         selectedDeviceID = devices.first?.id
     }
@@ -643,14 +669,21 @@ final class MobileAppModel {
     func updateDevice(_ device: MobileDevice, password: String? = nil) throws {
         guard let index = devices.firstIndex(where: { $0.id == device.id }),
               devices[index].kind == device.kind else { throw MobileDeviceError.deviceNotFound }
-        let validated = try device.validated()
+        var validated = try device.validated()
         try savePassword(password, for: validated)
         var previousConnection = devices[index]
         previousConnection.name = validated.name
         previousConnection.chatConfiguration = validated.chatConfiguration
-        let chatChanged = devices[index].chatConfiguration != validated.chatConfiguration
-        if chatChanged { invalidateChat(for: device.id) }
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
+        if connectionChanged, let configuration = validated.chatConfiguration {
+            validated.chatConfiguration = try WebChatConfiguration(serviceURL: configuration.serviceURL.absoluteString,
+                machineID: configuration.machineID)
+        }
+        let chatChanged = devices[index].chatConfiguration != validated.chatConfiguration
+        if chatChanged, let obsolete = devices[index].chatConfiguration {
+            try chatCredentialRemover(obsolete, device.id)
+        }
+        if chatChanged { invalidateChat(for: device.id) }
         if connectionChanged {
             agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
@@ -791,6 +824,9 @@ final class MobileAppModel {
             throw MobileDeviceError.deviceNotFound
         }
         try MobileSecretStore.removePassword(for: device.id)
+        if let configuration = saved.chatConfiguration {
+            try chatCredentialRemover(configuration, device.id)
+        }
         if selectedDeviceID == device.id { cancelSelectedConnection() }
         if let session = sessions.removeValue(forKey: device.id) {
             session.onChange = nil
