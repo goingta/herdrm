@@ -420,7 +420,36 @@ final class MobileAppModel {
     private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
     private var submitting: Set<MobilePromptTarget> = []
     private var chatBindingGenerations: [UUID: UUID] = [:]
+    private struct ChatControllerKey: Hashable {
+        let configuration: WebChatConfiguration
+        let target: WebChatTarget
+        let bindingGeneration: UUID?
+    }
+    @ObservationIgnored private var chatControllers: [ChatControllerKey: ChatTranscriptController] = [:]
     @ObservationIgnored private var chatDrafts: [MobilePaneContext: MobileChatDraft] = [:]
+
+    func chatController(for target: MobilePromptTarget) -> ChatTranscriptController? {
+        guard let configuration = devices.first(where: { $0.id == target.deviceID })?.chatConfiguration else { return nil }
+        let webTarget = WebChatTarget(nativeDeviceID: target.deviceID, presentationID: target.presentationID,
+            spaceID: target.spaceID, tabID: target.tabID, paneID: target.paneID)
+        let key = ChatControllerKey(configuration: configuration, target: webTarget, bindingGeneration: chatBindingGenerations[target.deviceID])
+        if let existing = chatControllers[key] { return existing }
+        guard let credential = chatCredentialProvider(configuration, target.deviceID) else { return nil }
+        let service = chatServiceFactory(configuration, credential)
+        let controller = ChatTranscriptController(target: webTarget, service: service)
+        controller.onPresented = { [weak self, weak controller] proof in
+            guard let self, let controller, self.chatControllers[key] === controller,
+                  let current = self.currentPromptTarget, MobilePaneContext(current) == MobilePaneContext(target),
+                  self.selectedTransportReady, self.paneMode == .chat, UIApplication.shared.applicationState == .active,
+                  self.selectedAgent?.status == .done, proof.target == webTarget,
+                  proof.completionRevision > 0, proof.completionRevision == self.chatCompletionRevision(for: target),
+                  controller.conversation?.historyID == proof.historyID else { return }
+            let unreadKey = AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)
+            if self.agentReadState.acknowledgeChatResult(unreadKey, foreground: true) { self.revision += 1 }
+        }
+        chatControllers[key] = controller
+        return controller
+    }
 
     func chatDraft(for target: MobilePromptTarget) -> MobileChatDraft {
         let key = MobilePaneContext(target)
@@ -443,6 +472,11 @@ final class MobileAppModel {
 
     func invalidateChat(for deviceID: UUID) {
         chatBindingGenerations[deviceID] = UUID()
+        for (key, controller) in chatControllers where key.target.nativeDeviceID == deviceID {
+            controller.invalidate()
+            Task { await controller.service.invalidate() }
+        }
+        chatControllers = chatControllers.filter { $0.key.target.nativeDeviceID != deviceID }
         for (key, draft) in chatDrafts where key.deviceID == deviceID { draft.invalidate() }
         chatDrafts = chatDrafts.filter { $0.key.deviceID != deviceID }
         paneModes = paneModes.filter { $0.key.deviceID != deviceID }

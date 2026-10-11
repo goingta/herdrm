@@ -5,6 +5,8 @@ import SwiftUI
 /// server tabs and a split-pane picker choose one existing terminal at a time.
 struct MobileRootView: View {
     @Bindable var model: MobileAppModel
+    var openChatURL: (URL) -> Void = { _ in }
+    @State private var chatDevice: MobileDevice?
     @State private var drawerShown = false
     @State private var restorationHintVisible = false
     @Environment(\.scenePhase) private var scenePhase
@@ -36,6 +38,11 @@ struct MobileRootView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+        }
+        .sheet(item: $chatDevice) { device in
+            WebChatSettingsView(device: device) { configuration in
+                try model.saveChatConfiguration(configuration, for: device.id)
+            }
         }
         .sheet(isPresented: $model.showAddDevice) { DeviceEditorSheet(model: model) }
         .sheet(item: $model.editingDevice) { DeviceEditorSheet(model: model, device: $0) }
@@ -84,6 +91,11 @@ struct MobileRootView: View {
                 if let device = model.selectedDevice {
                     Text(device.name)
                     if let space = model.selectedSpace { Text(space.label) }
+                    Button(AppLocalization.string("Chat Service")) { chatDevice = device }
+                    if model.paneMode == .chat, let target = model.currentPromptTarget {
+                        Button(AppLocalization.string("Refresh")) { model.chatController(for: target)?.refresh() }
+                    }
+                    Text(connectionLabel)
                     Button(AppLocalization.string("Edit Device")) { model.editingDevice = device }
                 }
                 Button(AppLocalization.string("Reconnect")) { model.resumeSelected() }
@@ -250,12 +262,11 @@ struct MobileRootView: View {
         } else if model.selectedDevice?.isTailcat == true, model.selectedAgentPaneID != nil {
             stateView("No Terminal over Tailcat", detail: AppLocalization.string("This device's tunnel reaches herdr's control plane only. Use an SSH device to attach to a live terminal."), symbol: "terminal")
         } else if let agent = model.selectedAgent, let transport = model.selectedSession?.transport {
-            MobileTerminalScreen(transport: transport, target: .agent(paneID: agent.paneID), paneID: agent.paneID,
-                title: agent.title(tabLabel: model.tabLabel(for: agent)), composerDraft: composerDraft(paneID: agent.paneID),
-                readState: model.agentReadState,
-                unreadKey: model.selectedDeviceID.map { AgentUnreadKey(deviceID: $0, paneID: agent.paneID) },
-                onReadStateChanged: { model.terminalReadStateChanged() }, transportReady: model.selectedTransportReady)
-                .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(agent.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
+            if let target = model.currentPromptTarget {
+                MobilePaneWorkspace(model: model, target: target, transport: transport, agent: agent,
+                    configureChat: { chatDevice = model.selectedDevice }, openURL: openChatURL)
+                    .id(MobilePaneContext(target))
+            }
         } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
             MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady)
                 .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
