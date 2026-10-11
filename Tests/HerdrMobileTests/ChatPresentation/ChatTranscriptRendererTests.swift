@@ -53,6 +53,12 @@ final class ChatTranscriptRendererTests: XCTestCase {
         XCTAssertEqual(agentCopies, 2)
         let folded = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block')?.classList.contains('is-folded')") as? Bool
         XCTAssertEqual(folded, true)
+        let rowDisplay = try await renderer.webView.evaluateJavaScript("getComputedStyle(document.querySelector('.work-block-rows')).display") as? String
+        XCTAssertEqual(rowDisplay, "none", "Folded rows must be visually hidden, not merely have a hidden attribute")
+        let rowHeight = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-rows').getBoundingClientRect().height") as? Double
+        XCTAssertEqual(rowHeight, 0)
+        let childRects = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-rows').firstElementChild.getClientRects().length") as? Int
+        XCTAssertEqual(childRects, 0, "Thinking/tool children must have no visible rectangles while folded")
         _ = try await renderer.webView.evaluateJavaScript("document.querySelector('.chat-turn-agent > .chat-turn-meta .chat-meta-btn').click()")
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(UIPasteboard.general.string, "Final reply")
@@ -188,6 +194,9 @@ final class ChatTranscriptRendererTests: XCTestCase {
         renderer.present(.init(targetKey: "pane", historyID: "history", revision: "tool", source: "claude-transcript", turns: [
             .init(role: "assistant", timestamp: nil, parts: [.init(kind: "tool", name: "Read", ref: "opaque-tool")], key: "turn")
         ]))
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Worked") == true }
+        renderer.setVisible(true)
+        _ = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-head').click()")
         try await waitForPage(renderer) { ($0 as? String)?.contains("Read") == true }
         renderer.displayToolOutput(String(repeating: "x", count: 500_001), key: "turn:0:tool", ref: "opaque-tool", proof: .init(targetKey: "pane", historyID: "history", revision: "tool"))
         _ = try await renderer.webView.evaluateJavaScript("document.querySelector('details').open=true")

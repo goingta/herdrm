@@ -20,3 +20,6 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font
 .copy-icon::before,.copy-icon::after { content:""; position:absolute; width:10px; height:10px; border:1.4px solid currentColor; border-radius:2px; }
 .copy-icon::before { top:0; left:0; }.copy-icon::after { top:4px; left:4px; background:var(--bg); }
 .is-copied .copy-icon::before { display:none; }.is-copied .copy-icon::after { width:6px; height:11px; border:0; border-right:2px solid currentColor; border-bottom:2px solid currentColor; border-radius:0; transform:rotate(40deg); background:transparent; top:0; }
+
+/* The reference rows use display:flex, overriding the UA hidden rule. */
+.work-block-rows[hidden] { display:none; }

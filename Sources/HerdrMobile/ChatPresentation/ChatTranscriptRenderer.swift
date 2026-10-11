@@ -89,6 +89,8 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
         webView.accessibilityIdentifier = "chat.transcript"
+        webView.accessibilityElementsHidden = true
+        webView.isUserInteractionEnabled = false
         loadPage()
     }
 
@@ -144,6 +146,8 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
 
     func setVisible(_ visible: Bool) {
         self.visible = visible
+        webView.accessibilityElementsHidden = !visible
+        webView.isUserInteractionEnabled = visible
         if loaded { call("setVisible", arguments: [visible]) }
     }
 

@@ -73,6 +73,8 @@ enum MobileGhosttyRuntime {
 /// pane renders, typing is opt-in via the keyboard toggle, and the composer
 /// (`agent.prompt`) plus key bar (`pane.send_input` keys) go through RPCs so
 /// herdr encodes them properly server-side.
+typealias MobileTerminalInputWriter = @MainActor (Data) async throws -> Void
+
 @MainActor
 final class MobileAttachSession: ObservableObject {
     enum Status: Equatable {
@@ -95,6 +97,7 @@ final class MobileAttachSession: ObservableObject {
     /// The channel, shared with the session's @Sendable write closure.
     private let channelBox: ChannelBox
     private var channel: SSHPTYChannel?
+    private let terminalInputWriter: MobileTerminalInputWriter?
     private var attachAttempt = UUID()
     private var openTask: Task<Void, Never>?
     private var readTask: Task<Void, Never>?
@@ -166,7 +169,8 @@ final class MobileAttachSession: ObservableObject {
     /// The herdr pane behind this attach, for key/prompt RPCs.
     let paneID: String
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true, terminalInputWriter: MobileTerminalInputWriter? = nil) {
+        self.terminalInputWriter = terminalInputWriter
         self.transportReady = transportReady
         self.readState = readState
         self.unreadKey = unreadKey
@@ -411,6 +415,22 @@ final class MobileAttachSession: ObservableObject {
         }
     }
 
+    /// A single write through this held terminal's input channel. Acceptance confirms
+    /// channel delivery, not command completion; uncertain writes are never replayed.
+    func submitShellInput(_ text: String) async throws {
+        guard case .terminal = target, transportReady, presentationVisible else { throw CancellationError() }
+        let writer: MobileTerminalInputWriter
+        if let terminalInputWriter { writer = terminalInputWriter }
+        else if let channel { writer = { data in try await channel.write(data, timeout: .seconds(10)) } }
+        else { throw CancellationError() }
+        let attempt = attachAttempt
+        let epoch = presentationEpoch
+        let sendingTransport = transport
+        try await writer(Data((text + "\r").utf8))
+        guard attachAttempt == attempt, presentationEpoch == epoch, transport === sendingTransport,
+              transportReady, presentationVisible else { throw CancellationError() }
+    }
+
     /// Sends a prompt to the agent; herdr delivers and submits it.
     func prompt(_ text: String) async throws {
         guard transportReady, let agentPaneID else { throw CancellationError() }
@@ -498,7 +518,7 @@ struct MobileTerminalScreen: View {
     private let unreadKey: AgentUnreadKey?
     private let onReadStateChanged: () -> Void
 
-    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true, submitPrompt: (() async -> MobilePromptResult)? = nil, refreshRevision: UInt64 = 0) {
+    init(transport: MobileTransport, target: TerminalAttachTarget, paneID: String, title: String, composerDraft: Binding<String>? = nil, readState: AgentReadState? = nil, unreadKey: AgentUnreadKey? = nil, onReadStateChanged: @escaping () -> Void = {}, transportReady: Bool = true, submitPrompt: (() async -> MobilePromptResult)? = nil, refreshRevision: UInt64 = 0, terminalInputWriter: MobileTerminalInputWriter? = nil) {
         self.refreshRevision = refreshRevision
         self.submitPrompt = submitPrompt
         self.transport = transport
@@ -507,7 +527,7 @@ struct MobileTerminalScreen: View {
         self.unreadKey = unreadKey
         self.onReadStateChanged = onReadStateChanged
         _session = StateObject(
-            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged, transportReady: transportReady)
+            wrappedValue: MobileAttachSession(transport: transport, target: target, paneID: paneID, readState: readState, unreadKey: unreadKey, onReadStateChanged: onReadStateChanged, transportReady: transportReady, terminalInputWriter: terminalInputWriter)
         )
         self.title = title
         self.composerDraft = composerDraft
@@ -560,9 +580,9 @@ struct MobileTerminalScreen: View {
 
     private var controls: some View {
         VStack(spacing: 8) {
-            if promptError { Text(AppLocalization.string("Message not confirmed. Draft retained; check the Agent before retrying."))
+            if promptError { Text(AppLocalization.string(session.agentPaneID == nil ? "Input not confirmed. Draft retained; check the terminal before retrying." : "Message not confirmed. Draft retained; check the Agent before retrying."))
                 .font(.caption).foregroundStyle(Theme.warning) }
-            if session.agentPaneID != nil { composer }
+            composer
             keyBar
         }
         .padding(.horizontal, 10)
@@ -604,7 +624,7 @@ struct MobileTerminalScreen: View {
     private var composer: some View {
         HStack(spacing: 8) {
             TextField(
-                AppLocalization.string("Message the agent…"),
+                AppLocalization.string(session.agentPaneID == nil ? "Enter text to send to the terminal…" : "Message the agent…"),
                 text: draft,
                 axis: .vertical
             )
@@ -617,7 +637,7 @@ struct MobileTerminalScreen: View {
             .frame(minHeight: 44)
             .foregroundStyle(Theme.text)
             .tint(Theme.accent)
-            .accessibilityIdentifier("agent.composer")
+            .accessibilityIdentifier(session.agentPaneID == nil ? "terminal.composer" : "agent.composer")
             .onSubmit(sendPrompt)
 
             Button(action: sendPrompt) {
@@ -629,7 +649,7 @@ struct MobileTerminalScreen: View {
             }
             .disabled(submitting || draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityLabel(AppLocalization.string("Send Prompt"))
-            .accessibilityIdentifier("agent.send")
+            .accessibilityIdentifier(session.agentPaneID == nil ? "terminal.send" : "agent.send")
         }
     }
 
@@ -646,7 +666,8 @@ struct MobileTerminalScreen: View {
                     let result = await submitPrompt()
                     promptError = result != .acknowledged
                 } else {
-                    try await session.prompt(text)
+                    if session.agentPaneID != nil { try await session.prompt(text) }
+                    else { try await session.submitShellInput(original) }
                     if draft.wrappedValue == original { draft.wrappedValue = "" }
                 }
             } catch { promptError = true }

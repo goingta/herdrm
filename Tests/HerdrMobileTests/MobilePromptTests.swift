@@ -5,6 +5,48 @@ import HerdrSSH
 
 @MainActor
 final class MobilePromptTests: XCTestCase {
+    func testShellInputWritesExactTextAndEnterOnceWithoutAgentPrompt() async throws {
+        let transport = PromptBoundary()
+        let input = ShellInputBoundary()
+        let session = MobileAttachSession(transport: transport, target: .terminal(terminalID: "shell"), paneID: "shell", terminalInputWriter: { data in try await input.write(data) })
+        try await session.submitShellInput("  echo fixture\n")
+        let writes = await input.writes
+        XCTAssertEqual(writes, [Data("  echo fixture\n\r".utf8)])
+        let prompts = await transport.submissions
+        XCTAssertEqual(prompts, 0)
+        session.presentationVisible = false
+        do { try await session.submitShellInput("covered"); XCTFail("Covered input must fail") } catch {}
+        let count = await input.writes.count
+        XCTAssertEqual(count, 1)
+    }
+
+    func testShellFailedWriteNeverReplaysAndOldAttachCannotConfirmNewTarget() async throws {
+        let transport = PromptBoundary()
+        let failed = ShellInputBoundary(fails: true)
+        let session = MobileAttachSession(transport: transport, target: .terminal(terminalID: "shell"), paneID: "shell", terminalInputWriter: { data in try await failed.write(data) })
+        do { try await session.submitShellInput("uncertain"); XCTFail("Write must fail") } catch {}
+        let failedCount = await failed.writes.count
+        XCTAssertEqual(failedCount, 1)
+        let delayed = ShellInputBoundary(delay: true)
+        let prior = MobileAttachSession(transport: transport, target: .terminal(terminalID: "shell"), paneID: "shell", terminalInputWriter: { data in try await delayed.write(data) })
+        let send = Task { () -> Bool in do { try await prior.submitShellInput("old host"); return true } catch { return false } }
+        try await Task.sleep(for: .milliseconds(20)); prior.stop()
+        let acknowledged = await send.value
+        XCTAssertFalse(acknowledged)
+        let count = await delayed.writes.count
+        XCTAssertEqual(count, 1, "Uncertain old delivery is never replayed")
+    }
+
+    func testShellDraftsAreIsolatedByPresentationAndSurviveTargetReturn() {
+        let model = MobileAppModel(store: MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!))
+        let device = UUID(); let first = MobileShellDraftTarget(deviceID: device, presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "same")
+        let replacement = MobileShellDraftTarget(deviceID: device, presentationID: UUID(), spaceID: "space", tabID: "tab", paneID: "same")
+        model.setShellDraft("first host draft", for: first); model.setShellDraft("new host draft", for: replacement)
+        model.setShellDraft("", for: first)
+        XCTAssertEqual(model.shellDraft(for: replacement), "new host draft")
+        XCTAssertEqual(model.shellDraft(for: first), "")
+    }
+
     func testFailedExistingAgentSubmissionKeepsDraftAndDoesNotReplay() async throws {
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let device = MobileDevice(name: "Fixture", host: "fixture.example", username: "developer")
@@ -116,4 +158,16 @@ private actor PromptBoundary: MobileTransport {
     static let snapshot = """
     {"snapshot":{"focused_workspace_id":"space-a","focused_pane_id":"pane-a","workspaces":[{"workspace_id":"space-a","number":1,"label":"Workspace","active_tab_id":"tab-a"}],"tabs":[{"tab_id":"tab-a","workspace_id":"space-a","number":1,"label":"Task"}],"agents":[{"workspace_id":"space-a","tab_id":"tab-a","pane_id":"pane-a","agent":"codex","agent_status":"working"}]}}
     """
+}
+
+private actor ShellInputBoundary {
+    var writes: [Data] = []
+    let fails: Bool
+    let delay: Bool
+    init(fails: Bool = false, delay: Bool = false) { self.fails = fails; self.delay = delay }
+    func write(_ data: Data) async throws {
+        writes.append(data)
+        if delay { try await Task.sleep(for: .milliseconds(80)) }
+        if fails { throw URLError(.networkConnectionLost) }
+    }
 }

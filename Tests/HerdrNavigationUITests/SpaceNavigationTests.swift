@@ -2,6 +2,26 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testOrdinaryShellComposerRetainsItsDraftAndUnconfirmedSend() {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launch()
+        let picker = app.buttons["workspace.panes"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5)); picker.tap()
+        app.buttons["workspace.pane.shell-two"].tap()
+        let shell = app.textFields["terminal.composer"]
+        XCTAssertTrue(shell.waitForExistence(timeout: 3))
+        shell.tap(); shell.typeText("shell fixture command")
+        app.buttons["terminal.send"].tap()
+        XCTAssertEqual(shell.value as? String, "shell fixture command", "Unavailable/uncertain channel must retain the draft")
+        app.buttons["workspace.tab.tab-one"].tap()
+        XCTAssertFalse(app.textFields["terminal.composer"].exists)
+        app.buttons["workspace.tab.tab-two"].tap()
+        XCTAssertEqual(shell.value as? String, "shell fixture command")
+        app.buttons["tab.preview"].tap(); app.buttons["tab.agent"].tap()
+        XCTAssertEqual(shell.value as? String, "shell fixture command")
+    }
+
+    @MainActor
     func testMoreOffersTerminalRefreshWithoutReconnectingOrDiscardingDraft() {
         continueAfterFailure = false
         let app = XCUIApplication()

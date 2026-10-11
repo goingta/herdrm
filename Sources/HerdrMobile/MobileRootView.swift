@@ -280,8 +280,8 @@ struct MobileRootView: View {
                     configureChat: { chatDevice = model.selectedDevice }, openURL: openChatURL)
                     .id(MobilePaneContext(target))
             }
-        } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport {
-            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), transportReady: model.selectedTransportReady, refreshRevision: model.terminalRefreshRevision)
+        } else if let pane = model.selectedTerminalPane, let terminalID = pane.terminalID, let transport = model.selectedSession?.transport, let draftTarget = model.currentShellDraftTarget {
+            MobileTerminalScreen(transport: transport, target: .terminal(terminalID: terminalID), paneID: pane.paneID, title: model.terminalLabel(for: pane), composerDraft: Binding(get: { model.shellDraft(for: draftTarget) }, set: { model.setShellDraft($0, for: draftTarget) }), transportReady: model.selectedTransportReady, refreshRevision: model.terminalRefreshRevision)
                 .id("\(model.selectedDeviceID?.uuidString ?? "")-\(model.selectedSpaceID ?? "")-\(model.selectedTabID ?? "")-\(pane.paneID)-\(model.selectedSession?.presentationID.uuidString ?? "")")
         } else if model.spaces.isEmpty {
             stateView("No Spaces", detail: AppLocalization.string("No existing workspace is available on this development machine."), symbol: "folder")
