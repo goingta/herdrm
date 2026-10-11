@@ -9,8 +9,8 @@
   --bg-input: #1b1c1e;
   --border: #2b2c30;
   --border-strong: #3b3c40;
-  /* the chat's user bubble: no edge where --bg-elevated alone parts it from --bg (the dark
-     amber, report and charcoal palettes), --border where the two surfaces sit close */
+  /* The dark user bubble's elevated fill separates it from the black page;
+     light appearance adds a border where the neutral surfaces sit close. */
   --bubble-border: transparent;
 
   /* text */

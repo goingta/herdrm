@@ -207,7 +207,7 @@ struct WebChatSettingsView: View {
             }
             .navigationTitle(AppLocalization.string("Chat service"))
             .navigationBarTitleDisplayMode(.inline)
-            .tint(Color(red: 0.93, green: 0.66, blue: 0.15))
+            .tint(Theme.accent)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
