@@ -77,3 +77,5 @@ xcrun simctl launch --terminate-running-process \
 用户在正式 App 提出三项问题：Space 副标题显示编号、外点不收键盘、整体字号过大。已修正并通过 10 项实际模拟器 UI 回归、8 项导航模型边界测试，独立 Standards / Spec 审查各 0 项；[最新证据及三张截图](iphone-usability-feedback.md)以新源码为准。先前本报告截图仍代表原受控阶段，不冒充新字号证据。
 
 `3d9012b` 已构建并更新安装到 iPhone 13，自动启动被 iOS 信任检查拒绝；本机签名和有效描述文件检查通过，待用户手动打开验证。真实服务登录、machine 绑定、实时聊天/附件发送和健康 SSH 锁屏恢复等原验收门槛继续保留，#25 和草稿 PR 尚未完成。
+
+随后用户完成手机验证，CoreDevice 重试已成功启动正式 App；信任问题解除，三项修正正在用户真机复验。
