@@ -30,7 +30,14 @@ Design canvas (waku-style sidebar, light/dark): `design/` — published as the
   password; TOFU host keys); RPC over `HerdrSSH`; terminal is the same libghostty
   `InMemoryTerminalSession`, fed by the SSH PTY channel, display-first behind an
   APC bootstrap marker + native composer (`agent.prompt`) + key bar
-  (`pane.send_input` keys). No relay yet — a second `MobileTransport` later.
+  (`pane.send_input` keys). The iPhone shell selects real Spaces/Tabs/panes and
+  retains terminal and chat mode presentations. `ChatService` validates each
+  target against an explicitly paired herdr-web-ui machine and stores scoped
+  service credentials independently in Keychain. `ChatPresentation` mounts an
+  offline WKWebView renderer for typed conversation data; its fresh visible
+  reply proof gates client-owned unread acknowledgements. Existing-Agent text
+  and uploaded `@path` attachments still submit once through SSH `agent.prompt`;
+  service responses do not replace the native terminal transport.
 - `design/` — design canvas working files (`*.dc.html` artboards + `canvas.json`).
 
 ## Build & test

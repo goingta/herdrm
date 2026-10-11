@@ -58,6 +58,18 @@ public final class AgentReadState {
         return true
     }
 
+    /// The caller has verified a newly completed reply in the visible chat
+    /// document. This one-shot acknowledgment never registers ongoing visibility:
+    /// a later completion requires a new content proof.
+    @discardableResult
+    public func acknowledgeChatResult(_ key: AgentUnreadKey, foreground: Bool) -> Bool {
+        guard foreground, previous[key.deviceID]?[key.paneID] == .done,
+              unread.contains(key) else { return false }
+        unread.remove(key)
+        save()
+        return true
+    }
+
     public func hideTerminal(_ key: AgentUnreadKey, generation: UUID) {
         guard terminals[key] == generation else { return }
         visible.remove(key)

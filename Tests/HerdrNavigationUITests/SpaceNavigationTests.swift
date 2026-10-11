@@ -2,6 +2,49 @@ import XCTest
 
 final class SpaceNavigationTests: XCTestCase {
     @MainActor
+    func testActualChatTranscriptAndComposerSurviveModeAndBottomRootSwitches() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["NAV_HARNESS_CHAT"] = "1"
+        app.launchEnvironment["NAV_HARNESS_DARK"] = "1"
+        app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-app.language", "zh-Hans"]
+        app.launch()
+        XCTAssertTrue(app.webViews["chat.transcript"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["chat.model"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].isSelected)
+        let input = app.textFields["agent.composer"]
+        input.tap()
+        input.typeText("retain across modes")
+        app.buttons["workspace.mode.terminal"].tap()
+        app.buttons["workspace.mode.chat"].tap()
+        XCTAssertEqual(input.value as? String, "retain across modes")
+        app.buttons["tab.preview"].tap()
+        app.buttons["tab.agent"].tap()
+        XCTAssertEqual(input.value as? String, "retain across modes")
+        app.buttons["tab.settings"].tap()
+        app.buttons["tab.agent"].tap()
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "reference-native-controlled-chat"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
+    func testReferenceHeaderShowsActualSessionAndModeControlsWithoutExtraWorkspaceHeader() {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].exists)
+        XCTAssertTrue(app.buttons["workspace.more"].exists)
+        XCTAssertFalse(app.staticTexts["workspace.title"].exists)
+        XCTAssertTrue(app.buttons["workspace.panes"].exists)
+        app.buttons["workspace.mode.terminal"].tap()
+        XCTAssertTrue(app.buttons["workspace.mode.terminal"].isSelected)
+        app.buttons["workspace.mode.chat"].tap()
+        XCTAssertTrue(app.buttons["workspace.mode.chat"].isSelected)
+    }
+
+    @MainActor
     func testInitialFourthTabAndSpaceReturnKeepSelectionVisibleWithoutSwiping() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -23,7 +66,7 @@ final class SpaceNavigationTests: XCTestCase {
     func testAuthoritativeDeletedPaneShowsUnavailableUntilUserChoosesAnotherPane() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-app.language", "en"]
         app.launchEnvironment["NAV_HARNESS_DELETED_PANE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["workspace.panes"].waitForExistence(timeout: 5))
@@ -90,7 +133,7 @@ final class SpaceNavigationTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["NAV_HARNESS_LARGE_TEXT"] = "1"
         app.launch()
-        for id in ["spaces.drawer", "devices.menu", "device.add"] {
+        for id in ["spaces.drawer", "workspace.mode.chat", "workspace.mode.terminal", "workspace.more"] {
             let button = app.buttons[id]
             XCTAssertTrue(button.waitForExistence(timeout: 5))
             XCTAssertTrue(button.isHittable, "Long names never hide \(id)")
@@ -99,6 +142,8 @@ final class SpaceNavigationTests: XCTestCase {
         }
         app.buttons["spaces.drawer"].tap()
         let space = app.buttons["space.select.space-b"]
+        // Accessibility text can place later rows below the visible drawer.
+        for _ in 0..<3 where !space.isHittable { app.scrollViews["spaces.sidebar"].swipeUp() }
         XCTAssertTrue(space.isHittable)
         XCTAssertGreaterThanOrEqual(space.frame.height, 44)
         space.tap()
@@ -113,7 +158,7 @@ final class SpaceNavigationTests: XCTestCase {
     func testSelectedTerminalShowsRecoveryAndFailureAfterReturningFromBackground() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-app.language", "en"]
         app.launchEnvironment["NAV_HARNESS_RECONNECT_FAILURE"] = "1"
         app.launch()
         XCTAssertTrue(app.buttons["workspace.panes"].waitForExistence(timeout: 5))

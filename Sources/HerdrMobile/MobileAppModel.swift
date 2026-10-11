@@ -23,6 +23,31 @@ struct MobilePaneChoice: Identifiable {
     let agent: AgentInfo?
 }
 
+enum MobilePaneMode: String { case chat, terminal }
+
+struct MobilePromptTarget: Hashable {
+    let deviceID: UUID
+    let presentationID: UUID
+    let connectionID: UUID
+    let spaceID: String
+    let tabID: String
+    let paneID: String
+}
+
+struct MobilePaneContext: Hashable {
+    let deviceID: UUID
+    let presentationID: UUID
+    let spaceID: String
+    let tabID: String
+    let paneID: String
+    init(_ target: MobilePromptTarget) {
+        deviceID = target.deviceID; presentationID = target.presentationID
+        spaceID = target.spaceID; tabID = target.tabID; paneID = target.paneID
+    }
+}
+
+enum MobilePromptResult: Equatable { case acknowledged, failed, targetChanged, unavailable, busy }
+
 /// One device's live herdr view: transport + snapshot + event pump.
 @MainActor
 final class MobileDeviceSession {
@@ -386,16 +411,194 @@ final class MobileAppModel {
     private var rememberedSpaces: [UUID: String] = [:]
     private var rememberedTabs: [SpaceKey: String] = [:]
     private var rememberedPanes: [TabKey: String] = [:]
+    private var completionStatuses: [AgentUnreadKey: AgentStatus] = [:]
+    private var completionRevisions: [AgentUnreadKey: UInt64] = [:]
     private var knownPaneTitles: [AgentUnreadKey: String] = [:]
     var showAddDevice = false
     var editingDevice: MobileDevice?
     private var agentDrafts: [AgentUnreadKey: String] = [:]
+    private var paneModes: [MobilePromptTarget: MobilePaneMode] = [:]
+    private var submitting: Set<MobilePromptTarget> = []
+    private var chatBindingGenerations: [UUID: UUID] = [:]
+    private struct ChatControllerKey: Hashable {
+        let configuration: WebChatConfiguration
+        let target: WebChatTarget
+        let bindingGeneration: UUID?
+    }
+    @ObservationIgnored private var chatControllers: [ChatControllerKey: ChatTranscriptController] = [:]
+    @ObservationIgnored private var chatCompletionChecks: [ChatControllerKey: Task<Void, Never>] = [:]
+    private var verifiedChatConnections: [ChatControllerKey: (revision: String, connectionID: UUID)] = [:]
+    @ObservationIgnored private var chatDrafts: [MobilePaneContext: MobileChatDraft] = [:]
+
+    func chatController(for target: MobilePromptTarget) -> ChatTranscriptController? {
+        guard let configuration = devices.first(where: { $0.id == target.deviceID })?.chatConfiguration else { return nil }
+        let webTarget = WebChatTarget(nativeDeviceID: target.deviceID, presentationID: target.presentationID,
+            spaceID: target.spaceID, tabID: target.tabID, paneID: target.paneID)
+        let key = ChatControllerKey(configuration: configuration, target: webTarget, bindingGeneration: chatBindingGenerations[target.deviceID])
+        if let existing = chatControllers[key] { return existing }
+        guard let credential = chatCredentialProvider(configuration, target.deviceID) else { return nil }
+        let service = chatServiceFactory(configuration, credential)
+        let controller = ChatTranscriptController(target: webTarget, service: service)
+        controller.onPresented = { [weak self, weak controller] proof in
+            guard let self, let controller, self.chatControllers[key] === controller,
+                  let current = self.currentPromptTarget, MobilePaneContext(current) == MobilePaneContext(target),
+                  self.selectedTransportReady, self.paneMode == .chat, UIApplication.shared.applicationState == .active,
+                  self.selectedAgent?.status == .done, proof.target == webTarget,
+                  (proof.completionRevision > 0 || proof.verifiedByCurrentPane),
+                  proof.completionRevision == self.chatCompletionRevision(for: target),
+                  controller.conversation?.historyID == proof.historyID else { return }
+            if proof.verifiedByCurrentPane {
+                guard self.verifiedChatConnections[key]?.revision == proof.revision,
+                      self.verifiedChatConnections[key]?.connectionID == current.connectionID else { return }
+            }
+            let unreadKey = AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)
+            if self.agentReadState.acknowledgeChatResult(unreadKey, foreground: true) { self.revision += 1 }
+        }
+        controller.onVisibleLatestReply = { [weak self, weak controller] candidate in
+            guard let self, let controller else { return }
+            self.verifyChatCompletion(candidate, controller: controller, key: key)
+        }
+        chatControllers[key] = controller
+        return controller
+    }
+
+    /// A cold restored unread has no in-memory pre-completion baseline. Verify
+    /// the whole substantial final reply tail against this connection's current
+    /// pane viewport; an earlier reply somewhere in scrollback is insufficient.
+    private func verifyChatCompletion(_ candidate: ChatVisibleReplyCandidate,
+                                      controller: ChatTranscriptController, key: ChatControllerKey) {
+        guard chatCompletionChecks[key] == nil, chatControllers[key] === controller,
+              let target = currentPromptTarget, key.target == candidate.target,
+              target.deviceID == candidate.target.nativeDeviceID,
+              target.presentationID == candidate.target.presentationID,
+              target.spaceID == candidate.target.spaceID, target.tabID == candidate.target.tabID,
+              target.paneID == candidate.target.paneID,
+              selectedTransportReady, paneMode == .chat, selectedAgent?.status == .done,
+              UIApplication.shared.applicationState == .active,
+              chatCompletionRevision(for: target) == candidate.completionRevision,
+              agentReadState.unread.contains(AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)),
+              let transport = selectedSession?.transport else { return }
+        chatCompletionChecks[key] = Task { [weak self, weak controller] in
+            guard let self, let controller else { return }
+            defer { self.chatCompletionChecks[key] = nil }
+            guard let result = try? await transport.request(method: "pane.read", params: .object([
+                "pane_id": .string(target.paneID), "source": .string("visible"), "format": .string("ansi")
+            ])), let paneText = result["read"]?["text"]?.stringValue,
+                  !Task.isCancelled, self.chatControllers[key] === controller,
+                  self.currentPromptTarget == target, self.selectedSession?.transport === transport,
+                  self.selectedTransportReady, self.paneMode == .chat, self.selectedAgent?.status == .done,
+                  UIApplication.shared.applicationState == .active,
+                  self.chatCompletionRevision(for: target) == candidate.completionRevision,
+                  Self.currentPaneEndsWithReply(paneText, reply: candidate.text) else { return }
+            self.verifiedChatConnections[key] = (candidate.revision, target.connectionID)
+            controller.acceptVerifiedCompletion(candidate: candidate)
+        }
+    }
+
+    private static func currentPaneEndsWithReply(_ paneANSI: String, reply: String) -> Bool {
+        func normalized(_ value: String) -> String {
+            value.replacingOccurrences(of: "\\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\u001B\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+                .filter { !$0.isWhitespace }
+        }
+        let tail = normalized(reply)
+        guard tail.count >= 64 else { return false }
+        return normalized(String(paneANSI.suffix(32_768))).hasSuffix(tail)
+    }
+
+    func chatDraft(for target: MobilePromptTarget) -> MobileChatDraft {
+        let key = MobilePaneContext(target)
+        if let draft = chatDrafts[key] { return draft }
+        let draft = MobileChatDraft()
+        chatDrafts[key] = draft
+        return draft
+    }
+
+    func chatBindingGeneration(for deviceID: UUID) -> UUID? { chatBindingGenerations[deviceID] }
+
+    func saveChatConfiguration(_ configuration: WebChatConfiguration?, for deviceID: UUID) throws {
+        guard var device = devices.first(where: { $0.id == deviceID }) else { throw MobileDeviceError.deviceNotFound }
+        device.chatConfiguration = configuration
+        try updateDevice(device)
+        // Re-authenticating an unchanged binding replaces the immutable service credential too.
+        invalidateChat(for: deviceID)
+        revision += 1
+    }
+
+    func invalidateChat(for deviceID: UUID) {
+        chatBindingGenerations[deviceID] = UUID()
+        for (key, task) in chatCompletionChecks where key.target.nativeDeviceID == deviceID { task.cancel() }
+        chatCompletionChecks = chatCompletionChecks.filter { $0.key.target.nativeDeviceID != deviceID }
+        verifiedChatConnections = verifiedChatConnections.filter { $0.key.target.nativeDeviceID != deviceID }
+        for (key, controller) in chatControllers where key.target.nativeDeviceID == deviceID {
+            controller.invalidate()
+            Task { await controller.service.invalidate() }
+        }
+        chatControllers = chatControllers.filter { $0.key.target.nativeDeviceID != deviceID }
+        for (key, draft) in chatDrafts where key.deviceID == deviceID { draft.invalidate() }
+        chatDrafts = chatDrafts.filter { $0.key.deviceID != deviceID }
+        paneModes = paneModes.filter { $0.key.deviceID != deviceID }
+        completionStatuses = completionStatuses.filter { $0.key.deviceID != deviceID }
+        completionRevisions = completionRevisions.filter { $0.key.deviceID != deviceID }
+    }
+
+    var currentPromptTarget: MobilePromptTarget? {
+        guard let deviceID = selectedDeviceID, let session = selectedSession,
+              let spaceID = selectedSpaceID, let tabID = selectedTabID,
+              let paneID = selectedAgentPaneID, !selectedTargetUnavailable else { return nil }
+        return MobilePromptTarget(deviceID: deviceID, presentationID: session.presentationID,
+            connectionID: session.connectionID, spaceID: spaceID, tabID: tabID, paneID: paneID)
+    }
+
+    var paneMode: MobilePaneMode {
+        guard let target = currentPromptTarget else { return .terminal }
+        // Reconnects preserve presentation identity and the user's mode.
+        return paneModes.first { $0.key.deviceID == target.deviceID && $0.key.presentationID == target.presentationID &&
+            $0.key.spaceID == target.spaceID && $0.key.tabID == target.tabID && $0.key.paneID == target.paneID }?.value
+            ?? (selectedAgent == nil ? .terminal : .chat)
+    }
+
+    func selectMode(_ mode: MobilePaneMode) {
+        guard let target = currentPromptTarget, mode == .terminal || selectedAgent != nil else { return }
+        paneModes = paneModes.filter { !($0.key.deviceID == target.deviceID && $0.key.paneID == target.paneID) }
+        paneModes[target] = mode
+    }
+
+    func isSubmitting(_ target: MobilePromptTarget) -> Bool { submitting.contains(target) }
+
+    /// A single acknowledged SSH submission. An uncertain request is never replayed.
+    func submitPrompt(target: MobilePromptTarget, attachmentPaths: [String] = []) async -> MobilePromptResult {
+        guard currentPromptTarget == target, selectedAgent != nil, selectedTransportReady,
+              let session = selectedSession, let transport = session.transport else { return .unavailable }
+        guard !submitting.contains(target) else { return .busy }
+        let bindingGeneration = chatBindingGenerations[target.deviceID]
+        let original = agentDraft(paneID: target.paneID, deviceID: target.deviceID)
+        let text = ([original.trimmingCharacters(in: .whitespacesAndNewlines)] + attachmentPaths.map { "@" + $0 })
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+        guard !text.isEmpty else { return .unavailable }
+        submitting.insert(target)
+        defer { submitting.remove(target) }
+        do {
+            _ = try await transport.request(method: "agent.prompt", params: .object([
+                "target": .string(target.paneID), "text": .string(text)
+            ]))
+        } catch { return .failed }
+        guard currentPromptTarget == target, session.transport === transport,
+              chatBindingGenerations[target.deviceID] == bindingGeneration else { return .targetChanged }
+        if agentDraft(paneID: target.paneID, deviceID: target.deviceID) == original {
+            setAgentDraft("", paneID: target.paneID, deviceID: target.deviceID)
+        }
+        return .acknowledged
+    }
     /// Bumped by sessions to publish nested (non-Observable) state changes.
     private(set) var revision = 0
 
     let agentReadState: AgentReadState
     private let store: MobileDeviceStore
     private let connector: MobileTransportConnector
+    let chatCredentialProvider: (WebChatConfiguration, UUID) -> WebChatCredential?
+    let chatServiceFactory: (WebChatConfiguration, WebChatCredential) -> WebChatService
+    private let chatCredentialRemover: (WebChatConfiguration, UUID) throws -> Void
     private var sessions: [UUID: MobileDeviceSession] = [:]
     private var connectionTask: Task<Void, Never>?
     private var connectionTaskToken: UUID?
@@ -410,7 +613,14 @@ final class MobileAppModel {
         agentDrafts[key] = text.isEmpty ? nil : text
     }
 
-    init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil, connector: @escaping MobileTransportConnector = { device in
+    init(store: MobileDeviceStore? = nil, readState: AgentReadState? = nil,
+         chatCredentialProvider: @escaping (WebChatConfiguration, UUID) -> WebChatCredential? = {
+             WebChatSecretStore.credential(for: $0, nativeDeviceID: $1)
+         },
+         chatServiceFactory: @escaping (WebChatConfiguration, WebChatCredential) -> WebChatService = { WebChatService(configuration: $0, credential: $1) },
+         chatCredentialRemover: @escaping (WebChatConfiguration, UUID) throws -> Void = {
+             try WebChatSecretStore.removeCredential(for: $0, nativeDeviceID: $1)
+         }, connector: @escaping MobileTransportConnector = { device in
         switch device.kind {
         case .ssh: return try await SSHDirectTransport.connect(device: device)
         case .tailcat: return try await TailcatMobileTransport.connect(device: device)
@@ -419,8 +629,34 @@ final class MobileAppModel {
         agentReadState = readState ?? AgentReadState()
         self.store = store ?? MobileDeviceStore()
         self.connector = connector
+        self.chatServiceFactory = chatServiceFactory
+        self.chatCredentialProvider = chatCredentialProvider
+        self.chatCredentialRemover = chatCredentialRemover
         devices = self.store.load()
         selectedDeviceID = devices.first?.id
+    }
+
+    private func observeChatCompletions(agents: [AgentInfo], deviceID: UUID, authoritative: Bool) {
+        for agent in agents {
+            let key = AgentUnreadKey(deviceID: deviceID, paneID: agent.paneID)
+            for (controllerKey, controller) in chatControllers where controllerKey.target.nativeDeviceID == deviceID && controllerKey.target.paneID == agent.paneID {
+                controller.observeAgentWorking(agent.status == .working)
+            }
+            if let previous = completionStatuses[key], previous != .done, agent.status == .done {
+                completionRevisions[key, default: 0] &+= 1
+            }
+            completionStatuses[key] = agent.status
+        }
+        if authoritative {
+            let live = Set(agents.map(\.paneID))
+            completionStatuses = completionStatuses.filter { $0.key.deviceID != deviceID || live.contains($0.key.paneID) }
+            completionRevisions = completionRevisions.filter { $0.key.deviceID != deviceID || live.contains($0.key.paneID) }
+        }
+    }
+
+    func chatCompletionRevision(for target: MobilePromptTarget) -> UInt64 {
+        _ = revision
+        return completionRevisions[AgentUnreadKey(deviceID: target.deviceID, paneID: target.paneID)] ?? 0
     }
 
     var selectedDevice: MobileDevice? {
@@ -437,6 +673,7 @@ final class MobileAppModel {
             if self.selectedDeviceID == deviceID { self.reconcileNavigation() }
         }
         session.onAgents = { [weak self, weak session] agents, authoritative in
+            self?.observeChatCompletions(agents: agents, deviceID: deviceID, authoritative: authoritative)
             self?.agentReadState.apply(agents: agents, deviceID: deviceID, authoritative: authoritative,
                                       foreground: UIApplication.shared.applicationState == .active && session?.actionsReady == true)
             self?.revision += 1
@@ -529,15 +766,28 @@ final class MobileAppModel {
     func updateDevice(_ device: MobileDevice, password: String? = nil) throws {
         guard let index = devices.firstIndex(where: { $0.id == device.id }),
               devices[index].kind == device.kind else { throw MobileDeviceError.deviceNotFound }
-        let validated = try device.validated()
-        try savePassword(password, for: validated)
+        var validated = try device.validated()
+        if devices[index].authMethod != validated.authMethod || password?.isEmpty == false {
+            try savePassword(password, for: validated)
+        }
         var previousConnection = devices[index]
         previousConnection.name = validated.name
+        previousConnection.chatConfiguration = validated.chatConfiguration
         let connectionChanged = previousConnection != validated || password?.isEmpty == false
+        if connectionChanged, let configuration = validated.chatConfiguration {
+            validated.chatConfiguration = try WebChatConfiguration(serviceURL: configuration.serviceURL.absoluteString,
+                machineID: configuration.machineID)
+        }
+        let chatChanged = devices[index].chatConfiguration != validated.chatConfiguration
+        if chatChanged, let obsolete = devices[index].chatConfiguration {
+            try chatCredentialRemover(obsolete, device.id)
+        }
+        if chatChanged { invalidateChat(for: device.id) }
         if connectionChanged {
             agentReadState.removeDevice(device.id)
             clearNavigationHistory(for: device.id)
             agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+            invalidateChat(for: device.id)
             if selectedDeviceID == device.id { cancelSelectedConnection() }
             let obsolete = sessions.removeValue(forKey: device.id)
             obsolete?.onChange = nil
@@ -673,6 +923,9 @@ final class MobileAppModel {
             throw MobileDeviceError.deviceNotFound
         }
         try MobileSecretStore.removePassword(for: device.id)
+        if let configuration = saved.chatConfiguration {
+            try chatCredentialRemover(configuration, device.id)
+        }
         if selectedDeviceID == device.id { cancelSelectedConnection() }
         if let session = sessions.removeValue(forKey: device.id) {
             session.onChange = nil
@@ -686,6 +939,7 @@ final class MobileAppModel {
         clearNavigationHistory(for: device.id)
         devices.removeAll { $0.id == device.id }
         agentDrafts = agentDrafts.filter { $0.key.deviceID != device.id }
+        invalidateChat(for: device.id)
         if !saved.isTailcat, !devices.contains(where: {
             !$0.isTailcat && $0.host == saved.host && $0.port == saved.port
         }) {

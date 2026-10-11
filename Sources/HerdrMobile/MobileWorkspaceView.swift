@@ -43,7 +43,9 @@ struct MobileWorkspaceView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                MobileRootView(model: model)
+                MobileRootView(model: model, openChatURL: { url in
+                    if navigation.browser.open(url.absoluteString) { navigation.selectedTab = .preview }
+                })
                     .environment(\.agentTabVisible, navigation.selectedTab == .agent)
                     .tabVisibility(navigation.selectedTab == .agent)
                 ProjectPreviewView(browser: navigation.browser, returnToAgent: { navigation.selectedTab = .agent })
