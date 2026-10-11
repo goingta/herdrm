@@ -10,6 +10,27 @@ struct NavigationHarnessApp: App {
     @StateObject private var appearance = AppAppearancePreference()
     @Environment(\.scenePhase) private var phase
     init() {
+        if ProcessInfo.processInfo.environment["VISUAL_ACCEPTANCE"] == "1" {
+            let fixture = try! VisualFixture.load()
+            let defaults = UserDefaults(suiteName: "herdr.visual.mobile.fixture")!
+            defaults.removePersistentDomain(forName: "herdr.visual.mobile.fixture")
+            let store = MobileDeviceStore(defaults: defaults)
+            var device = MobileDevice(id: fixture.deviceID, name: fixture.deviceName, host: fixture.host, username: fixture.username)
+            device.chatConfiguration = try! WebChatConfiguration(serviceURL: "https://visual-chat-fixture.invalid/", machineID: "local")
+            store.save(ProcessInfo.processInfo.environment["VISUAL_SCENE"] == "empty" ? [] : [device])
+            let readState = AgentReadState(defaults: defaults)
+            fixture.seedUnread(readState)
+            AppLanguagePreference.shared.selection = AppLanguage(rawValue: ProcessInfo.processInfo.environment["VISUAL_LANGUAGE"] ?? "en") ?? .english
+            AppAppearancePreference().mode = AppearancePreference(rawValue: ProcessInfo.processInfo.environment["VISUAL_THEME"] ?? "dark") ?? .dark
+            _model = State(initialValue: MobileAppModel(store: store, readState: readState, publicKeyLine: { "TEST FIXTURE PUBLIC KEY — no Keychain access" },
+                chatCredentialProvider: { _, _ in .token("controlled-fixture-only") },
+                chatServiceFactory: { configuration, credential in
+                    let session = URLSessionConfiguration.ephemeral
+                    session.protocolClasses = [VisualChatHTTPBoundary.self]
+                    return WebChatService(configuration: configuration, credential: credential, session: URLSession(configuration: session))
+                }, chatCredentialRemover: { _, _ in }, connector: { _ in VisualTransport(fixture: fixture) }))
+            return
+        }
         let store = MobileDeviceStore(defaults: UserDefaults(suiteName: "herdr.navigation.fixture")!)
         var device = MobileDevice(id: UUID(uuidString: "00000000-0000-0000-0000-000000000023")!, name: "远端开发机 · 长中文名称验证操作入口", host: "fixture.example", username: "developer")
         let chat = ProcessInfo.processInfo.environment["NAV_HARNESS_CHAT"] == "1"
@@ -27,7 +48,13 @@ struct NavigationHarnessApp: App {
     }
     var body: some Scene {
         WindowGroup {
-            MobileWorkspaceView(model: model)
+            Group {
+                if ProcessInfo.processInfo.environment["VISUAL_SCENE"] == "terminal" {
+                    VisualMobileTerminal(payload: try! VisualFixture.load().terminal)
+                } else {
+                    MobileWorkspaceView(model: model)
+                }
+            }
                 .environment(language)
                 .environment(\.locale, language.locale)
                 .environmentObject(appearance)
@@ -91,6 +118,25 @@ private actor NavigationHarnessTransport: MobileTransport {
       "panes":[{"workspace_id":"space-a","tab_id":"tab-two","pane_id":"shell-two","terminal_id":"terminal-two","terminal_title":"构建服务 · 普通终端"}]
     }}
     """
+}
+
+private actor VisualTransport: MobileTransport {
+    let fixture: VisualFixture
+    init(fixture: VisualFixture) { self.fixture = fixture }
+    func request(method: String, params: JSONValue) async throws -> JSONValue {
+        if method == "ping" { return .object(["version": .string("fixture"), "protocol": .number(22)]) }
+        let encoded = try JSONEncoder().encode(fixture.snapshot)
+        return .object(["snapshot": try JSONDecoder().decode(JSONValue.self, from: encoded)])
+    }
+    nonisolated func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error> { AsyncThrowingStream { _ in } }
+    func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel {
+        throw VisualFixtureAttachError()
+    }
+    func close() async {}
+}
+
+private struct VisualFixtureAttachError: Error, CustomStringConvertible {
+    var description: String { "Controlled fixture: SSH attach unavailable" }
 }
 
 

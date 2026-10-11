@@ -211,6 +211,10 @@ targets:
         excludes: [HerdrMobileApp.swift, Info.plist]
       - Sources/HerdrShared
       - Tests/HerdrNavigationHarness
+      - path: Tests/VisualAcceptance/VisualFixture.swift
+      - path: Tests/VisualAcceptance/VisualChatHTTPBoundary.swift
+      - path: Tests/VisualAcceptance/scene.json
+        buildPhase: resources
       - path: Resources/BrandIcons.xcassets
         buildPhase: resources
       - path: Resources/ChatPresentation
@@ -219,6 +223,11 @@ targets:
       - path: Resources/Localizable.xcstrings
       - path: Resources/AppIcon/MobileAssets.xcassets
         buildPhase: resources
+    info:
+      path: Tests/HerdrNavigationHarness/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     dependencies:
       - package: HerdrKit
       - package: HerdrSSH
@@ -229,6 +238,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.navigation-fixture
         PRODUCT_NAME: NavigationHarness
+        INFOPLIST_KEY_CFBundleDisplayName: Herdr UI Fixture
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
@@ -271,7 +281,60 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
 
+  HerdrMacVisualHarness:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/HerdrM
+        excludes: [Info.plist]
+      - Sources/HerdrShared
+      - Tests/HerdrMacVisualHarness
+      - path: Tests/VisualAcceptance/VisualFixture.swift
+      - path: Tests/VisualAcceptance/VisualChatHTTPBoundary.swift
+      - path: Tests/VisualAcceptance/scene.json
+        buildPhase: resources
+      - path: Resources
+        buildPhase: resources
+        excludes: [Localizable.xcstrings, AppIcon/MobileAssets.xcassets, BrandIcons.xcassets, generate-brand-icons.swift, AppIcon/generate-mobile-icon.swift, AppIcon/README.md]
+      - path: Resources/Localizable.xcstrings
+    dependencies:
+      - package: HerdrKit
+      - package: HerdrTailcat
+      - package: GhosttyTerminal
+      - package: Sparkle
+      - package: StickySectionHeaders
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.mac-visual-fixture
+        PRODUCT_NAME: MacVisualHarness
+        SWIFT_VERSION: "5.10"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) VISUAL_ACCEPTANCE_HOST"
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_APP_SANDBOX: NO
+
+  HerdrMacVisualUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [Tests/HerdrMacVisualUITests]
+    dependencies:
+      - target: HerdrMacVisualHarness
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.herdrm.mac-visual-uitests
+        TEST_TARGET_NAME: HerdrMacVisualHarness
+        SWIFT_VERSION: "5.10"
+        CODE_SIGN_IDENTITY: "-"
+
 schemes:
+  HerdrMacVisualAcceptance:
+    build:
+      targets:
+        HerdrMacVisualHarness: all
+        HerdrMacVisualUITests: [test]
+    test:
+      targets: [HerdrMacVisualUITests]
   HerdrNavigationAcceptance:
     build:
       targets:

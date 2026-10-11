@@ -81,7 +81,9 @@ extension FocusedValues {
     }
 }
 
+#if !VISUAL_ACCEPTANCE_HOST
 @main
+#endif
 struct HerdrMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue

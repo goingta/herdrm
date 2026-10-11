@@ -161,7 +161,7 @@ final class AppModel: ObservableObject {
             // Devices, which removes the key). Every reset path — removing the
             // filtered device, a notification jump to another device — goes
             // through this property, so the stored value can never go stale.
-            UserDefaults.standard.set(deviceFilter?.uuidString, forKey: Self.deviceFilterKey)
+            defaults.set(deviceFilter?.uuidString, forKey: Self.deviceFilterKey)
         }
     }
     private static let deviceFilterKey = "device.filter"
@@ -206,7 +206,7 @@ final class AppModel: ObservableObject {
         attachSessions.append(entry)
     }
     /// Finished agents the user has not opened since they flipped to `done`.
-    let agentReadState = AgentReadState()
+    let agentReadState: AgentReadState
     @Published private(set) var unreadAgents: Set<AgentUnreadKey> = []
 
     @Published var showAddDevice = false
@@ -226,10 +226,9 @@ final class AppModel: ObservableObject {
     /// Persisted divider ratio for the ⌘D split, shared with the resize commands.
     /// Deliberately not `@AppStorage`: that publishes only from inside a View, so the
     /// menu commands would write UserDefaults without ever redrawing the split.
-    @Published var splitRatio: Double =
-        UserDefaults.standard.object(forKey: AppModel.splitRatioKey) as? Double ?? 0.5
+    @Published var splitRatio: Double = 0.5
     {
-        didSet { UserDefaults.standard.set(splitRatio, forKey: AppModel.splitRatioKey) }
+        didSet { defaults.set(splitRatio, forKey: AppModel.splitRatioKey) }
     }
     static let splitRatioKey = "terminal.splitRatio"
     /// Live terminal views of the ⌘D split, used by menu commands to move focus.
@@ -271,7 +270,8 @@ final class AppModel: ObservableObject {
     }
     @Published var closeRequest: CloseRequest?
 
-    private let store = DeviceStore()
+    private let store: DeviceStore
+    private let defaults: UserDefaults
     private var services: [UUID: HerdrService] = [:]
     private var sessionTasks: [UUID: Task<Void, Never>] = [:]
     private var refreshDebounces: [UUID: Task<Void, Never>] = [:]
@@ -283,13 +283,17 @@ final class AppModel: ObservableObject {
     private var statusGenerations: [UUID: UInt64] = [:]
     private var previousStatuses: [UUID: [String: AgentStatus]] = [:]
 
-    init() {
+    init(store: DeviceStore = DeviceStore(), defaults: UserDefaults = .standard, readState: AgentReadState? = nil) {
+        self.store = store
+        self.defaults = defaults
+        self.agentReadState = readState ?? AgentReadState(defaults: defaults)
         unreadAgents = agentReadState.unread
-        let loaded = DeviceStore().load()
+        splitRatio = defaults.object(forKey: Self.splitRatioKey) as? Double ?? 0.5
+        let loaded = store.load()
         devices = loaded
         // Restore the device filter only if that device still exists;
         // otherwise fall back to All Devices.
-        if let raw = UserDefaults.standard.string(forKey: Self.deviceFilterKey),
+        if let raw = defaults.string(forKey: Self.deviceFilterKey),
            let id = UUID(uuidString: raw),
            loaded.contains(where: { $0.id == id }) {
             deviceFilter = id

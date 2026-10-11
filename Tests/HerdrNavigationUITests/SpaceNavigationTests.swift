@@ -227,8 +227,16 @@ final class SpaceNavigationTests: XCTestCase {
         app.activate()
         XCTAssertTrue(app.staticTexts["Restoring Terminal…"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.staticTexts["No Agent Selected"].exists)
+        let restoring = XCTAttachment(screenshot: app.screenshot())
+        restoring.name = "iphone-native-retained-context-restoring"
+        restoring.lifetime = .keepAlways
+        add(restoring)
         XCTAssertTrue(app.staticTexts["Connection Failed"].waitForExistence(timeout: 6))
         XCTAssertFalse(app.staticTexts["No Agent Selected"].exists)
         XCTAssertTrue(app.buttons["workspace.tab.tab-two"].isSelected)
+        let failure = XCTAttachment(screenshot: app.screenshot())
+        failure.name = "iphone-native-retained-context-failure"
+        failure.lifetime = .keepAlways
+        add(failure)
     }
 }

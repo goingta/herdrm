@@ -109,7 +109,7 @@
 
 #1 的代码、自动验证和 iPhone 13 / iOS 18.7.3 真机配置表单验收已完成；真机通过临时配置保存、编辑、冷启动读取及删除，原配置保留。原 [PR #19](https://github.com/goingta/herdrm/pull/19) 的代码与表单验收现已集成至 [PR #26](https://github.com/goingta/herdrm/pull/26)。视觉基础包含 Logo、共享主题、语言/外观设置和基础状态组件；具体页面使用这些基础继续完成。
 
-完成未读的规则与持久状态作为独立行为工作，接入 Mac 和 iPhone；与 #6 Agent 状态及 #8/#11 上下文保存衔接。最终两端截图和真机使用检查并入 #18 验收。新增六项已获批准并发布为 [#20–#25](../plans/mac-iphone-visual-consistency-tickets/README.md)，图标、主题、语言、未读和预览基础已集成；#23 的 v1.1 导航正在实施，#25 的最终验收待其完成。
+完成未读的规则与持久状态作为独立行为工作，接入 Mac 和 iPhone；与 #6 Agent 状态及 #8/#11 上下文保存衔接。最终两端截图和真机使用检查并入 #18 验收。新增六项已获批准并发布为 [#20–#25](../plans/mac-iphone-visual-consistency-tickets/README.md)，图标、主题、语言、未读和预览基础已集成；#23 的导航与后续参考聊天扩展已集成；#25 的受控模拟器验收通过，新范围真机与真实服务仍待完成，见 [更新验收记录](../evidence/iphone-web-ui-chat-acceptance.md)。
 
 ## 确认与审查记录
 

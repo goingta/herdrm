@@ -1,0 +1,627 @@
+{
+  "status": "Controlled Simulator acceptance passed; physical device and real authenticated service pending",
+  "referenceSource": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+  "deployedServiceSource": "5d18c535caf042bef69e569aa1f0299072760fde",
+  "nativeCaptureSource": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+  "integrationSource": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+  "physicalDeviceGate": "pending: initial runner bootstrap failed, then user requested Simulator only",
+  "realAuthenticatedServiceGate": "pending",
+  "images": [
+    {
+      "file": "reference-en-dark-chat.png",
+      "sha256": "4ee0d0491a088339717a4934bda84bc445f4605cda6f48791fa32cd85afca1c7",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-en-dark-sidebar.png",
+      "sha256": "39c4b4c644484fac79fe9f57c8a8893492d920e68606726824b5b6a56c38e9c9",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-en-light-chat.png",
+      "sha256": "2b5767fa000b2ad4513979b7cdeed8ce7f0a9c753e839e171d1ee31760c49766",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "en",
+      "theme": "light",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-en-light-sidebar.png",
+      "sha256": "f8ee3900708f859137594c70511e2329be08cba424f70da6a667eaf03f8ab4ae",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "en",
+      "theme": "light",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-zh-dark-chat.png",
+      "sha256": "376b93630d970423a7c06549ad4843d2035103282ae149bb881f9942505c9460",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-zh-dark-sidebar.png",
+      "sha256": "b9b67f79ceaf4459bebdaeaee6fb872e1cd412ea9873801f6cab8dcc039a10b7",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-zh-light-chat.png",
+      "sha256": "17aac98ed9392608e42bbbed1f129fec86562253644ab92ae03fe4f5c599e629",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "zh",
+      "theme": "light",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "reference-zh-light-sidebar.png",
+      "sha256": "d6a643ec62db2d095ed02938b284213be49e463448443446c3cb2ec027587d5d",
+      "boundary": "actual pinned React frontend + synthetic API/WS",
+      "sourceRevision": "21d1b9208ac489f8690fe8ba758dc5cd73842cf6",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "Chrome 154.0.8037.99 on macOS 26.5.2",
+      "locale": "zh",
+      "theme": "light",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2250
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        750
+      ],
+      "dynamicType": "browser default",
+      "visuallyInspected": true
+    },
+    {
+      "file": "native-en-light-chat.png",
+      "sha256": "52b23742fd77d779571a84fbefa466f0f274198d54e854e474815d3d1bded637",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "light",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/611D4BB8-833D-413E-B12D-F7A89DB9E244.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-chat.png",
+      "sha256": "d5cf939177f90cc5f4af50ccda9d0f9f35747001834e2fc510871927c42d0b8e",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/FAA1CADE-BB19-46D9-B400-9B7E801E652E.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-light-chat.png",
+      "sha256": "4e4c4b183c6885cf0e970d4f2aba902c89dbbada931216dda3aa4d418068e71c",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "light",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/A6F8CEF1-E848-493A-93E9-A965185F006E.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-chat.png",
+      "sha256": "282634e1de5309568343f6dfdcef39136ad21a71e97a38dd7fdcd821f6e450b2",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "chat",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/2433F2FF-6394-43C9-BE9F-F31176223E95.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-en-light-sidebar.png",
+      "sha256": "279d02c600f97907b6f58ab3429e227c79e2745cc14e401590df367394e6b0e1",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "light",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/210FCB8E-9885-47E6-843A-9416608D2073.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-sidebar.png",
+      "sha256": "243e6d069efe54a8c8a6d1a02a5c04a64fee01eb535552748ded722b522750ca",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/D8976E33-2A8A-4292-A0B3-8C69E49A14DA.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-light-sidebar.png",
+      "sha256": "7fd473d92319fd53a4b2049d095be49860c892f4607e8b70707ae9c7d4e81f24",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "light",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/D63DB8D6-E768-4E31-B043-4B00010FF6B6.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-sidebar.png",
+      "sha256": "8ab50a4e57db600c059df6dd4d7b8596a228f76c02a11f1436217ec905514461",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "sidebar",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/6415986D-389D-49FF-8458-506B08D67A73.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-keyboard.png",
+      "sha256": "a64f2a26f5916ccf1e9adab26c94de7a04fed1ba41cd7ac6575783c016d40cd3",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "keyboard",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/9DA05C71-3EB1-4C33-AA79-485F120A117D.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-preview.png",
+      "sha256": "66e27a87f2c063b1f127219e4f70aa47c7f9078bce6f139fbf6a91b4dc10d1b9",
+      "boundary": "actual native WK preview + runner-owned loopback webpage",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "preview",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/D03FF2AA-1AD4-4BD7-A482-7EFD998F384C.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-saved-edit.png",
+      "sha256": "7a9d6f3a9217f88205ea33b4e6ec09af53b3b3c33777e29240a1c0c9f1eeb264",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "saved-edit",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/2A558B5C-D6CE-4334-9C22-17449DE6DE0A.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-zh-dark-ghostty-renderer.png",
+      "sha256": "4a1021301ac46a5bed23f6433cba54f4b82556e20cf899acccf807d6350bf260",
+      "boundary": "actual standalone Ghostty renderer + synthetic UTF-8/ANSI bytes; no live PTY",
+      "sourceRevision": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "zh",
+      "theme": "dark",
+      "scene": "ghostty-renderer",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-four-final-images/BA7346A1-B43E-48EC-9B4F-13D2416724F5.png",
+      "resultBundle": "/private/tmp/herdr-chat-four-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-ordinary-shell.png",
+      "sha256": "fb063bb8272bddea0848a836d99da9734fe150e95feeb7706af416510825f442",
+      "boundary": "actual native shell controls + deliberate attach failure; no live SSH",
+      "sourceRevision": "1579733bef0521e1b796560b3cce177fe60036d1",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "ordinary-shell",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-reference-polish-final-images/22BEC0B8-C1CA-4225-B808-C0618C4ADE96.png",
+      "resultBundle": "/private/tmp/herdr-chat-reference-polish-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-overlay-return.png",
+      "sha256": "4ed690249b272d0319d0f1e79bc03d051b2c9abdde7bbdaadf12e9672d5293dd",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "1579733bef0521e1b796560b3cce177fe60036d1",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "overlay-return",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-reference-polish-final-images/AD16CC3B-90A7-4A4A-9C5A-1786003A65A9.png",
+      "resultBundle": "/private/tmp/herdr-chat-reference-polish-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-add-modal.png",
+      "sha256": "38b9e8c69edef60398940d90416256cbac3f3fed9083cbd76a97704a17c7aaed",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "1579733bef0521e1b796560b3cce177fe60036d1",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "add-modal",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-reference-polish-final-images/75CAA4C4-7C43-4CD7-A3C7-3FC68EC442C4.png",
+      "resultBundle": "/private/tmp/herdr-chat-reference-polish-final.xcresult"
+    },
+    {
+      "file": "native-en-dark-drawer-occlusion.png",
+      "sha256": "6d87b532a609a82c20dde87bbd8935dcbe2f735a9350d354350b15ee36dc0c60",
+      "boundary": "actual native root + injected HTTPS conversation boundary",
+      "sourceRevision": "1579733bef0521e1b796560b3cce177fe60036d1",
+      "integrationRevision": "4a2117819cfdd0a4343ec27c16730ea4b9fa3a94",
+      "fixtureSha256": "bf3ce75440d70a72c608cf0cc9fae9074519973fce1401c9ea20d759b911cab5",
+      "platform": "iPhone 13 Simulator / iOS 26.5",
+      "simulatorUUID": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+      "locale": "en",
+      "theme": "dark",
+      "scene": "drawer-occlusion",
+      "pixelDimensions": [
+        1170,
+        2532
+      ],
+      "scale": 3,
+      "logicalDimensions": [
+        390,
+        844
+      ],
+      "dynamicType": "large (default)",
+      "visuallyInspected": true,
+      "originalAttachment": "/private/tmp/herdr-chat-reference-polish-final-images/BAE344D0-7C90-4176-9F3A-D0A271FB68DB.png",
+      "resultBundle": "/private/tmp/herdr-chat-reference-polish-final.xcresult"
+    }
+  ],
+  "productionSource": "04f919ad8bf69a596d99bca62d1feedfda8e0880",
+  "selectedImageCount": 24,
+  "exclusions": [
+    "Superseded c95/619 mobile layouts and incorrectly visible folded rows",
+    "Unsettled/clipped reference sidebar captures",
+    "Occluded ordinary-shell unconfirmed-error screenshot 2CFAE2EE; functional draft retention test passed"
+  ],
+  "nativeResultGroups": [
+    {
+      "source": "0a342a1a3a1b43c48d3a0194b2c34637fc926f76",
+      "log": "/private/tmp/herdr-chat-four-final.log",
+      "result": "1 test / four language-theme scenes passed; 194.552 seconds"
+    },
+    {
+      "source": "1579733bef0521e1b796560b3cce177fe60036d1",
+      "log": "/private/tmp/herdr-chat-reference-polish-final.log",
+      "result": "drawer/modal occlusion and ordinary-shell tests passed; earlier matrix failed and replaced by final four-scene result"
+    },
+    {
+      "source": "61974506413e2d86d865c7e63e0c730c504470ae",
+      "log": "/private/tmp/herdr-chat-fixed-final.log",
+      "result": "Six unaffected selection, recovery, accessibility, tracer, foreground-cache and Chinese-chrome cases passed; initial overlay failed and was fixed"
+    }
+  ]
+}

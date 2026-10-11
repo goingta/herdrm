@@ -1,6 +1,6 @@
 # V06 — 双端视觉、导航与可访问性验收
 
-状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[双端 UI] V06 — 双端视觉、导航与可访问性验收](https://github.com/goingta/herdrm/issues/25)。
+状态：已批准并发布，标签 ready-for-agent；实施中；v1.1 行为基线已通过；新参考布局及聊天扩展的模拟器验收通过，真机与真实服务待验收。GitHub：[[双端 UI] V06 — 双端视觉、导航与可访问性验收](https://github.com/goingta/herdrm/issues/25)。
 
 ## What to build
 
@@ -37,3 +37,13 @@
 ## v1.1 导航补充
 
 验收手机默认收起的侧栏、选择 Space 自动收起、同 Space 的真实 Tab 顺序与名称、多分屏菜单切换、跨 Space 草稿和选择隔离，以及恢复期间保留当前 Space/Tab/pane。对比截图使用相同 Space/Agent 数据，保留 Mac 并排侧栏布局。上述真实页面边界及截图验收已由用户确认。
+
+## Implementation baseline, 2026-10-11
+
+[Baseline report](../../evidence/mac-iphone-visual-acceptance.md) records five passed physical iPhone 13 / iOS 18.7.3 tests, native Mac accessibility labels, current-Tab visibility and controlled recovery. The user subsequently requested herdr-web-ui interaction above the retained bottom App bar and functional plugin mode. Superseded mobile screenshots remain outside the repository; V06 remains incomplete until acceptance of the updated scope. No GitHub Issue was closed.
+
+## Reference/chat extension acceptance, 2026-10-11
+
+[Updated report](../../evidence/iphone-web-ui-chat-acceptance.md) contains 24 inspected original PNGs and exact per-image provenance for canonical native/reference language/theme comparison. Final production integration is `4a21178` / fix `04f919a`; the four-scene Simulator matrix passed at test-only `0a342a1`, and actual drawer/modal occlusion plus ordinary-shell draft controls passed at `1579733` with identical production source. Earlier failed and superseded captures are excluded; overlapping production test batches remain separate. Mac build passed; prior Mac window/AX evidence is explicitly historical.
+
+The user requested Simulator testing first. The new iOS 18.7.3 phone runner failed before any gate, so physical accessibility/keyboard/recovery and real authenticated service binding/update/send/upload remain pending. No issue is closed and the full acceptance checkboxes above remain open. Existing physical CRUD/Tab evidence does not replace the new chat extension gates.

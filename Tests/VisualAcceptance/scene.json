@@ -1,0 +1,166 @@
+{
+  "deviceID": "11111111-1111-4111-8111-111111111111",
+  "deviceName": "Linux · 日常开发机",
+  "host": "fixture.invalid",
+  "username": "developer",
+  "snapshot": {
+    "focused_workspace_id": "visual-workspace",
+    "focused_pane_id": "done-read",
+    "workspaces": [
+      {
+        "workspace_id": "visual-workspace",
+        "number": 1,
+        "label": "workspace",
+        "active_tab_id": "read-tab"
+      },
+      {
+        "workspace_id": "visual-long",
+        "number": 2,
+        "label": "团队工作区－移动端与桌面端界面一致性验收",
+        "active_tab_id": "long-tab"
+      }
+    ],
+    "tabs": [
+      {
+        "tab_id": "working-tab",
+        "workspace_id": "visual-workspace",
+        "number": 1,
+        "label": "需求设计"
+      },
+      {
+        "tab_id": "blocked-tab",
+        "workspace_id": "visual-workspace",
+        "number": 2,
+        "label": "执行命令与排查输入等待状态"
+      },
+      {
+        "tab_id": "done-unread-tab",
+        "workspace_id": "visual-workspace",
+        "number": 3,
+        "label": "验收结果－长中文名称跨平台测试"
+      },
+      {
+        "tab_id": "read-tab",
+        "workspace_id": "visual-workspace",
+        "number": 4,
+        "label": "已查看的结果"
+      },
+      {
+        "tab_id": "idle-tab",
+        "workspace_id": "visual-workspace",
+        "number": 5,
+        "label": "Idle Agent"
+      },
+      {
+        "tab_id": "long-tab",
+        "workspace_id": "visual-long",
+        "number": 1,
+        "label": "需求设计"
+      }
+    ],
+    "agents": [
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "working-tab",
+        "pane_id": "working",
+        "agent": "codex",
+        "agent_status": "working",
+        "name": "需求设计"
+      },
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "blocked-tab",
+        "pane_id": "blocked",
+        "agent": "claude",
+        "agent_status": "blocked",
+        "name": "执行命令与排查输入等待状态"
+      },
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "done-unread-tab",
+        "pane_id": "done-unread",
+        "agent": "gemini",
+        "agent_status": "done",
+        "name": "验收结果－长中文名称跨平台测试"
+      },
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "read-tab",
+        "pane_id": "done-read",
+        "agent": "claude",
+        "agent_status": "done",
+        "name": "已查看的结果"
+      },
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "idle-tab",
+        "pane_id": "idle",
+        "agent": "codex",
+        "agent_status": "idle",
+        "name": "Idle Agent"
+      },
+      {
+        "workspace_id": "visual-long",
+        "tab_id": "long-tab",
+        "pane_id": "long-pane",
+        "agent": "codex",
+        "agent_status": "working",
+        "name": "需求设计"
+      }
+    ],
+    "panes": [
+      {
+        "workspace_id": "visual-workspace",
+        "tab_id": "read-tab",
+        "pane_id": "shell",
+        "terminal_id": "shell-terminal",
+        "terminal_title": "构建服务 · 普通终端"
+      }
+    ]
+  },
+  "terminal": "\u001b[2J\u001b[H中文终端 你好\r\nSAME_NATIVE_TERMINAL_RESULT\r\n\u001b[31mANSI red\u001b[32m green\u001b[34m blue\u001b[0m\r\n\u001b[38;2;240;240;240m\u001b[48;2;25;25;25mtruecolor\u001b[0m\r\n❯ workspace 0123\r\n$ ",
+  "conversation": {
+    "history_id": "visual-history-v1",
+    "source": "claude-transcript",
+    "cursor": null,
+    "metadata": {
+      "model": "fixture-model",
+      "reasoning_effort": "High"
+    },
+    "turns": [
+      {
+        "role": "user",
+        "ts": "2026-10-11T01:00:00Z",
+        "parts": [
+          {
+            "kind": "text",
+            "text": "请检查已有 Agent 的界面。"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "ts": "2026-10-11T01:01:00Z",
+        "end_ts": "2026-10-11T01:01:06Z",
+        "parts": [
+          {
+            "kind": "thinking",
+            "text": "Controlled fixture thinking: 这是受控测试数据。"
+          },
+          {
+            "kind": "tool",
+            "name": "read_file",
+            "summary": "Read fixture README",
+            "input": "README.md",
+            "output": "Controlled tool output",
+            "error": false
+          },
+          {
+            "kind": "text",
+            "text": "## SAME_CHAT_FIXTURE_RESULT\n\n中文 Markdown **你好**。\n\n```sh\nprintf HERDR_UI_OK\n```\n\n[打开项目预览](https://example.com)"
+          }
+        ]
+      }
+    ]
+  }
+}
