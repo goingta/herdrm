@@ -146,8 +146,8 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
     func requestVisibleProof() { if loaded { call("requestProof", arguments: []) } }
 
     func displayImage(_ data: Data, contentType: String, key: String, ref: String? = nil, proof: ChatRendererProof) {
-        guard matchesReference(key: key, ref: ref, proof: proof),
-              ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/heic"].contains(contentType),
+        guard matchesReference(key: key, ref: ref, proof: proof) else { return }
+        guard ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/heic"].contains(contentType.lowercased()),
               data.count <= 8 * 1024 * 1024,
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
@@ -158,13 +158,22 @@ final class ChatTranscriptRenderer: NSObject, WKNavigationDelegate {
                   kCGImageSourceCreateThumbnailFromImageAlways: true,
                   kCGImageSourceThumbnailMaxPixelSize: 1600,
                   kCGImageSourceCreateThumbnailWithTransform: true
-              ] as CFDictionary), let png = UIImage(cgImage: thumbnail).pngData(), png.count <= 8 * 1024 * 1024 else { return }
+              ] as CFDictionary), let png = UIImage(cgImage: thumbnail).pngData(), png.count <= 8 * 1024 * 1024 else {
+            call("error", arguments: [key, document?.language == "zh" ? "无法显示这张图片。请重试或在服务端查看原图。" : "This image cannot be displayed. Retry or view the original on the service."])
+            return
+        }
         call("image", arguments: [key, png.base64EncodedString(), "image/png"])
     }
 
     func displayToolOutput(_ text: String, key: String, ref: String? = nil, proof: ChatRendererProof) {
         guard matchesReference(key: key, ref: ref, proof: proof) else { return }
-        call("tool", arguments: [key, String(text.prefix(500_000))])
+        var displayed = String(text.prefix(500_000))
+        if text.count > 500_000 {
+            displayed += document?.language == "zh"
+                ? "\n\n[已达到手机显示上限。剩余输出请在服务端查看。]"
+                : "\n\n[Phone display limit reached. View the remaining output on the service.]"
+        }
+        call("tool", arguments: [key, displayed])
     }
 
     func displayReferenceError(_ message: String, key: String, ref: String? = nil, proof: ChatRendererProof) {

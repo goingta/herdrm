@@ -123,6 +123,26 @@ final class ChatTranscriptRendererTests: XCTestCase {
         XCTAssertEqual(executed, false)
     }
 
+    func testLongToolOutputReportsDisplayLimitInsteadOfSilentlyTruncating() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController()
+        window.rootViewController = host
+        renderer.webView.frame = window.bounds
+        host.view.addSubview(renderer.webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        renderer.present(.init(targetKey: "pane", historyID: "history", revision: "tool", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "tool", name: "Read", ref: "opaque-tool")], key: "turn")
+        ]))
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Read") == true }
+        renderer.displayToolOutput(String(repeating: "x", count: 500_001), key: "turn:0:tool", ref: "opaque-tool", proof: .init(targetKey: "pane", historyID: "history", revision: "tool"))
+        _ = try await renderer.webView.evaluateJavaScript("document.querySelector('details').open=true")
+        try await Task.sleep(for: .milliseconds(100))
+        let notice = try await renderer.webView.evaluateJavaScript("document.querySelector('[data-full-output]')?.textContent.includes('display limit')") as? Bool
+        XCTAssertEqual(notice, true)
+    }
+
     private func waitForPage(_ renderer: ChatTranscriptRenderer, _ condition: (Any?) -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(10)
         while ContinuousClock.now < deadline {

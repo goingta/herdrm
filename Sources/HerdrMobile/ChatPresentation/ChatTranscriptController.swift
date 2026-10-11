@@ -61,10 +61,12 @@ final class ChatTranscriptController {
     private var needsLatestReset = false
     private struct ReplyIdentity: Equatable { let history: String?; let fingerprint: String }
     private var completionBaseline: ReplyIdentity?
+    private var completionBaselineHistory: String?
     private var hasCompletionBaseline = false
     private var completionProven = false
     private var agentWorking = false
     private var workingBaseline: ReplyIdentity?
+    private var workingBaselineHistory: String?
     private var hasWorkingBaseline = false
 
     /// Called synchronously before activity updates, so a final HTTP reply that arrives
@@ -72,6 +74,7 @@ final class ChatTranscriptController {
     func observeAgentWorking(_ working: Bool) {
         if working && !agentWorking {
             workingBaseline = latestReply(conversation)
+            workingBaselineHistory = conversation?.historyID
             hasWorkingBaseline = conversation != nil
         }
         agentWorking = working
@@ -134,6 +137,7 @@ final class ChatTranscriptController {
         if self.completionRevision != completionRevision {
             self.completionRevision = completionRevision
             completionBaseline = hasWorkingBaseline ? workingBaseline : latestReply(conversation)
+            completionBaselineHistory = hasWorkingBaseline ? workingBaselineHistory : conversation?.historyID
             hasCompletionBaseline = hasWorkingBaseline || conversation != nil
             hasWorkingBaseline = false
             completionProven = false
@@ -283,14 +287,16 @@ final class ChatTranscriptController {
                 let reply = latestReply(conversation)
                 if replaced || !hasCompletionBaseline {
                     completionBaseline = reply
+                    completionBaselineHistory = conversation?.historyID
                     hasCompletionBaseline = true
                     completionProven = false
                 } else {
-                    completionProven = reply != nil && reply?.history == completionBaseline?.history && reply != completionBaseline
+                    completionProven = reply != nil && reply?.history == completionBaselineHistory && reply != completionBaseline
                 }
             }
             if agentWorking && !hasWorkingBaseline {
                 workingBaseline = latestReply(conversation)
+                workingBaselineHistory = conversation?.historyID
                 hasWorkingBaseline = true
             }
             fresh = true
