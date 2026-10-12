@@ -10,7 +10,7 @@
   --border: #2b2c30;
   --border-strong: #3b3c40;
   /* The dark user bubble's elevated fill separates it from the black page;
-     light appearance adds a border where the neutral surfaces sit close. */
+     both fixed-dark presets retain the same bubble separation. */
   --bubble-border: transparent;
 
   /* text */
@@ -175,46 +175,29 @@
   --droplet-shadow: rgba(0, 0, 0, 0.35);
 }
 
-[data-theme="light"] {
-  color-scheme: light;
-  --bg: #ffffff;
-  --bg-panel: #f5f5f7;
-  --bg-elevated: #f0f0f2;
-  --bg-hover: #e4e4e7;
-  --bg-input: #f5f5f7;
-  --border: #d4d4d8;
-  --border-strong: #b4b4bc;
-  --bubble-border: var(--border);
-  --text: #171719;
-  --text-dim: #52525b;
-  --text-strong: #000000;
-  --accent: #006b12;
-  --accent-tint: rgba(0, 107, 18, 0.12);
-  --primary: #00f000;
-  --primary-hover: #25ff25;
+/* Both client presets are fixed dark. Amber restores the pre-Moshi reference
+   surfaces and accent, without changing semantic Agent/ANSI colors. */
+[data-theme="amber"] {
+  color-scheme: dark;
+  --bg: #12100e;
+  --bg-panel: #181613;
+  --bg-elevated: #211e1a;
+  --bg-hover: #2a2621;
+  --bg-input: #1c1916;
+  --border: #2d2924;
+  --border-strong: #3e3830;
+  --text: #d8d0c3;
+  --text-dim: #9b9183;
+  --text-strong: #f2ebdf;
+  --accent: #f0a830;
+  --accent-tint: rgba(240, 168, 48, 0.13);
+  --primary: #f0a830;
+  --primary-hover: #f6bb55;
   --primary-text: #000000;
-  --primary-tint: rgba(0, 240, 0, 0.14);
-  --status-idle: #52525b;
-  --status-working: #155a72;
-  --status-blocked: #a82323;
-  --status-done: #2f6317;
-  --status-working-tint: rgba(21, 90, 114, 0.12);
-  --status-blocked-tint: rgba(168, 35, 35, 0.12);
-  --status-done-tint: rgba(47, 99, 23, 0.12);
-  --danger-tint: rgba(168, 35, 35, 0.1);
-  --danger-text: #8f1d1d;
-  --scrim: rgba(0, 0, 0, 0.35);
-  --shadow-drawer: 0 0 40px rgba(0, 0, 0, 0.22);
-  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.16), 0 0 0 1px var(--border);
-  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.07);
-  --term-bg: #ffffff;
-  --term-fg: #171719;
-  --term-cursor: #006b12;
-  --term-selection: #d0f4d0;
-  --syntax-keyword: #a33a17;
-  --syntax-string: #4b6b18;
-  --syntax-number: #8a3f7a;
-  --syntax-type: #155a72;
-  --syntax-variable: #7a5418;
-  --syntax-meta: #5d4791;
+  --primary-tint: rgba(240, 168, 48, 0.16);
+  --scrim: rgba(8, 6, 4, 0.55);
+  --term-bg: #12100e;
+  --term-fg: #d8d0c3;
+  --term-cursor: #f0a830;
+  --term-selection: #4a3d26;
 }

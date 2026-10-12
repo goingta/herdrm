@@ -86,7 +86,7 @@ extension FocusedValues {
 #endif
 struct HerdrMApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
+    @StateObject private var appearance = AppAppearancePreference()
     @State private var languagePreference = AppLanguagePreference.shared
     @FocusedValue(\.appModel) private var focusedModel
     @FocusedValue(\.splitAxis) private var focusedSplitAxis
@@ -111,11 +111,8 @@ struct HerdrMApp: App {
             RootView(model: appDelegate.model)
                 .environment(languagePreference)
                 .environment(\.locale, languagePreference.locale)
-                .preferredColorScheme(AppearancePreference(rawValue: themePreference)?.colorScheme)
-                .onAppear { Self.applyTheme(themePreference) }
-                .onChange(of: themePreference) { _, newValue in
-                    Self.applyTheme(newValue)
-                }
+                .appAppearance(appearance)
+                .onAppear { NSApp.appearance = NSAppearance(named: .darkAqua) }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
@@ -227,6 +224,7 @@ struct HerdrMApp: App {
 
         Settings {
             SettingsView(model: appDelegate.model)
+                .appAppearance(appearance)
                 .environment(languagePreference)
                 .environment(\.locale, languagePreference.locale)
         }
@@ -236,14 +234,6 @@ struct HerdrMApp: App {
         if focusedModel?.shellSplitAxis != nil { return AppLocalization.string("Close Split") }
         if focusedModel?.selectedShell != nil { return AppLocalization.string("Close Terminal") }
         return AppLocalization.string("Close")
-    }
-
-    static func applyTheme(_ preference: String) {
-        switch preference {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: NSApp.appearance = nil
-        }
     }
 
     // MARK: - Split commands
@@ -641,13 +631,12 @@ struct TerminalSettingsView: View {
 }
 
 struct AppearanceSettingsView: View {
-    @AppStorage(AppAppearancePreference.defaultsKey) private var themePreference = AppearancePreference.system.rawValue
+    @EnvironmentObject private var appearance: AppAppearancePreference
     var body: some View {
         Form {
-            Picker("Theme", selection: $themePreference) {
-                Text(AppLocalization.string("theme.system", defaultValue: "System")).tag("system")
-                Text(AppLocalization.string("theme.light", defaultValue: "Light")).tag("light")
-                Text(AppLocalization.string("theme.dark", defaultValue: "Dark")).tag("dark")
+            Picker("Theme", selection: $appearance.mode) {
+                Text(AppLocalization.string("theme.phosphor", defaultValue: "Phosphor")).tag(AppearancePreference.phosphor)
+                Text(AppLocalization.string("theme.amber", defaultValue: "Amber")).tag(AppearancePreference.amber)
             }
             .pickerStyle(.segmented)
             Text("The terminal follows the app theme.")

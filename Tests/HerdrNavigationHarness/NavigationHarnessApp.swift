@@ -21,7 +21,9 @@ struct NavigationHarnessApp: App {
             let readState = AgentReadState(defaults: defaults)
             fixture.seedUnread(readState)
             AppLanguagePreference.shared.selection = AppLanguage(rawValue: ProcessInfo.processInfo.environment["VISUAL_LANGUAGE"] ?? "en") ?? .english
-            AppAppearancePreference().mode = AppearancePreference(rawValue: ProcessInfo.processInfo.environment["VISUAL_THEME"] ?? "dark") ?? .dark
+            let preference = AppAppearancePreference()
+            preference.mode = AppearancePreference(rawValue: ProcessInfo.processInfo.environment["VISUAL_THEME"] ?? "") ?? .phosphor
+            _appearance = StateObject(wrappedValue: preference)
             _model = State(initialValue: MobileAppModel(store: store, readState: readState, publicKeyLine: { "TEST FIXTURE PUBLIC KEY — no Keychain access" },
                 chatCredentialProvider: { _, _ in .token("controlled-fixture-only") },
                 chatServiceFactory: { configuration, credential in
@@ -44,7 +46,9 @@ struct NavigationHarnessApp: App {
                 sessionConfiguration.protocolClasses = [NavigationChatHTTPBoundary.self]
                 return WebChatService(configuration: configuration, credential: credential, session: URLSession(configuration: sessionConfiguration))
             }, chatCredentialRemover: { _, _ in }, connector: { _ in try await boundary.connect() }))
-        if ProcessInfo.processInfo.environment["NAV_HARNESS_DARK"] == "1" { appearance.mode = .dark }
+        let preference = AppAppearancePreference()
+        if ProcessInfo.processInfo.environment["NAV_HARNESS_DARK"] == "1" { preference.mode = .phosphor }
+        _appearance = StateObject(wrappedValue: preference)
     }
     var body: some Scene {
         WindowGroup {
@@ -57,9 +61,7 @@ struct NavigationHarnessApp: App {
             }
                 .environment(language)
                 .environment(\.locale, language.locale)
-                .environmentObject(appearance)
-                .preferredColorScheme(appearance.preferredColorScheme)
-                .tint(Theme.accent)
+                .appAppearance(appearance)
                 .environment(\.dynamicTypeSize, ProcessInfo.processInfo.environment["NAV_HARNESS_LARGE_TEXT"] == "1" ? .accessibility3 : .large)
                 .onChange(of: phase) { _, phase in
                     if phase == .active { model.resumeSelected() }

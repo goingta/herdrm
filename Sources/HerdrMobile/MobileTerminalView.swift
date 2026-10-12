@@ -712,12 +712,14 @@ private struct MobileTerminalHost: UIViewRepresentable {
     @Binding var keyboardShown: Bool
     var presentationVisible: Bool
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appColorPreset) private var colorPreset
 
     func makeUIView(context: Context) -> MobileGhosttyTerminalView {
         let view = MobileGhosttyTerminalView(frame: .zero)
         view.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
         session.setLightColorsEnabled(colorScheme == .light)
-        MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
+        MobileGhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
+        MobileGhosttyRuntime.controller.setColorScheme(.dark)
         view.modifiedKeyboardText = { [weak session] in session?.sendModifiedKeyboardText($0) ?? false }
         view.controller = MobileGhosttyRuntime.controller
         view.configuration = TerminalSurfaceOptions(backend: .inMemory(session.terminal))
@@ -733,7 +735,8 @@ private struct MobileTerminalHost: UIViewRepresentable {
 
     func updateUIView(_ uiView: MobileGhosttyTerminalView, context: Context) {
         uiView.overrideUserInterfaceStyle = colorScheme == .dark ? .dark : .light
-        MobileGhosttyRuntime.controller.setColorScheme(colorScheme == .dark ? .dark : .light)
+        MobileGhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
+        MobileGhosttyRuntime.controller.setColorScheme(.dark)
         session.setLightColorsEnabled(colorScheme == .light)
         session.presentationVisible = presentationVisible
         if context.coordinator.refreshRevision != session.displayRefreshRevision {

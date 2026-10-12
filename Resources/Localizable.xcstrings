@@ -6569,6 +6569,38 @@
           }
         }
       }
+    },
+    "theme.phosphor": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phosphor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "荧绿"
+          }
+        }
+      }
+    },
+    "theme.amber": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amber"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "橙光"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

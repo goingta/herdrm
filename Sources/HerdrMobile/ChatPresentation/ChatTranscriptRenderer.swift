@@ -38,7 +38,7 @@ struct ChatRenderDocument: Codable, Equatable {
     var prepended = false
     var readinessAllowed = true
     var freshContent = false
-    var theme = "dark"
+    var theme = "phosphor"
     var language = "en"
     var textScale: Double = 1
     var labels: [String: String] = [:]

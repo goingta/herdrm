@@ -1358,6 +1358,7 @@ private extension NSView {
 /// Embeds a Ghostty terminal running a direct agent or ordinary-terminal attach
 /// (locally or over SSH).
 struct AttachTerminalView: NSViewRepresentable {
+    @Environment(\.appColorPreset) private var colorPreset
     let device: Device
     let target: TerminalAttachTarget
     /// Registry identity (the `AttachedEntry.id`), so the view stays addressable for
@@ -1402,6 +1403,7 @@ struct AttachTerminalView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> LineBreakTerminalView {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         let host = TerminalProcessHost()
         let view = LineBreakTerminalView(frame: .zero)
         view.processHost = host
@@ -1449,6 +1451,7 @@ struct AttachTerminalView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LineBreakTerminalView, context: Context) {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         configurePasteHandling(nsView)
         context.coordinator.onExit = onExit
         configureAppearance(nsView)
@@ -1707,6 +1710,7 @@ enum ShellViewRegistry {
 }
 
 struct ShellTerminalView: NSViewRepresentable {
+    @Environment(\.appColorPreset) private var colorPreset
     /// Session identity for the registry; nil for the ⌘D split shell.
     var sessionID: UUID?
     var device: Device = .local
@@ -1730,6 +1734,7 @@ struct ShellTerminalView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> LineBreakTerminalView {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         let host = TerminalProcessHost()
         let view = LineBreakTerminalView(frame: .zero)
         view.processHost = host
@@ -1782,6 +1787,7 @@ struct ShellTerminalView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LineBreakTerminalView, context: Context) {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         context.coordinator.onExit = onExit
         nsView.onAttachmentError = onAttachmentError
         nsView.onAttachmentUploadingChanged = onAttachmentUploadingChanged

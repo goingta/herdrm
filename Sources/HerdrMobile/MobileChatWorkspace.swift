@@ -56,7 +56,7 @@ struct MobileChatWorkspace: View {
     let openURL: (URL) -> Void
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.agentTabVisible) private var rootVisible
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appColorPreset) private var colorPreset
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -118,7 +118,7 @@ struct MobileChatWorkspace: View {
         .onChange(of: model.selectedTransportReady) { _, _ in updateActivity() }
         .onChange(of: model.revision) { _, _ in updateActivity() }
         .onChange(of: model.selectedAgent?.status) { _, _ in controller?.refresh() }
-        .onChange(of: colorScheme) { _, _ in updateAppearance() }
+        .onChange(of: colorPreset) { _, _ in updateAppearance() }
         .onChange(of: locale.identifier) { _, _ in updateAppearance() }
         .onChange(of: dynamicTypeSize) { _, _ in updateAppearance() }
         .onDisappear { controller?.setActivity(visible: false, foreground: false, connectionValidated: false,
@@ -147,7 +147,7 @@ struct MobileChatWorkspace: View {
         case .xLarge: scale = 1.1
         default: scale = 1
         }
-        controller?.setAppearance(theme: colorScheme == .dark ? "dark" : "light",
+        controller?.setAppearance(theme: colorPreset.rawValue,
             language: locale.language.languageCode?.identifier == "zh" ? "zh" : "en", textScale: scale)
     }
 }

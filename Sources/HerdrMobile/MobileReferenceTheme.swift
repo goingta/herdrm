@@ -2,15 +2,15 @@ import SwiftUI
 
 /// Keeps the reference layout on the app's shared green/black/white palette.
 enum MobileReferenceTheme {
-    static let background = Theme.contentBackground
-    static let panel = Theme.panel
-    static let elevated = Theme.elevated
-    static let input = Theme.input
-    static let border = Theme.sidebarBorder
-    static let text = Theme.text
-    static let strong = Theme.strong
-    static let dim = Theme.textSecondary
-    static let accent = Theme.accent
-    static let primary = Theme.primary
-    static let primaryText = Theme.primaryText
+    static var background: Color { Theme.contentBackground }
+    static var panel: Color { Theme.panel }
+    static var elevated: Color { Theme.elevated }
+    static var input: Color { Theme.input }
+    static var border: Color { Theme.sidebarBorder }
+    static var text: Color { Theme.text }
+    static var strong: Color { Theme.strong }
+    static var dim: Color { Theme.textSecondary }
+    static var accent: Color { Theme.accent }
+    static var primary: Color { Theme.primary }
+    static var primaryText: Color { Theme.primaryText }
 }
