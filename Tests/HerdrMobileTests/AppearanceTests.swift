@@ -153,7 +153,7 @@ final class AppearanceTests: XCTestCase {
 
     func testLiveTerminalChangesModeWithoutReplacingSurfaceOrOpeningAnotherAttach() async throws {
         let preference = AppAppearancePreference(defaults: UserDefaults(suiteName: UUID().uuidString)!)
-        preference.mode = .dark
+        preference.mode = .phosphor
         let transport = AppearanceTransport()
         let root = AppearanceHarness(preference: preference, transport: transport)
         let hosting = UIHostingController(rootView: root)
@@ -174,20 +174,34 @@ final class AppearanceTests: XCTestCase {
         let opens = await transport.opens
         XCTAssertEqual(terminal.traitCollection.userInterfaceStyle, .dark)
 
-        preference.mode = .light
+        preference.mode = .amber
         try await settle()
         let after = try XCTUnwrap(findTerminal(in: hosting.view))
         XCTAssertTrue(after === terminal, "Mode changes must retain the existing terminal view")
-        XCTAssertEqual(after.traitCollection.userInterfaceStyle, .light)
-        XCTAssertEqual(MobileGhosttyRuntime.controller.effectiveColorScheme, .light)
+        XCTAssertEqual(after.traitCollection.userInterfaceStyle, .dark)
+        XCTAssertEqual(MobileGhosttyRuntime.controller.effectiveColorScheme, .dark)
+        let orangePixel = try backgroundPixel(after)
+        XCTAssertEqual(orangePixel[0], 18, accuracy: 2)
+        XCTAssertEqual(orangePixel[1], 16, accuracy: 2)
+        XCTAssertEqual(orangePixel[2], 14, accuracy: 2)
         XCTAssertTrue(try XCTUnwrap(backend.readViewportText()).contains("中文终端 你好"))
         let subsequentOpens = await transport.opens
         XCTAssertEqual(subsequentOpens, opens, "Appearance must never re-open the remote terminal")
-        preference.mode = .dark
+        preference.mode = .phosphor
         try await settle()
         XCTAssertEqual(terminal.traitCollection.userInterfaceStyle, .dark)
         XCTAssertEqual(MobileGhosttyRuntime.controller.effectiveColorScheme, .dark)
         XCTAssertTrue(try XCTUnwrap(backend.readViewportText()).contains("ANSI green"))
+    }
+
+    private func backgroundPixel(_ terminal: UITerminalView) throws -> [Double] {
+        let image = try XCTUnwrap(terminal.snapshotImage()?.cgImage)
+        let corner = try XCTUnwrap(image.cropping(to: CGRect(x: image.width - 8, y: image.height - 8, width: 1, height: 1)))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(corner, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return pixel.prefix(3).map(Double.init)
     }
 
     private func settle() async throws {
@@ -199,20 +213,31 @@ final class AppearanceTests: XCTestCase {
         return view.subviews.lazy.compactMap { self.findTerminal(in: $0) }.first
     }
 
-    func testAppearanceDefaultsToSystemAndRestoresUserSelection() {
+    func testLegacyAppearanceMigrationPreservesUnrelatedPreferences() {
+        for old in ["system", "light", "dark", "future-unknown"] {
+            let defaults = UserDefaults(suiteName: UUID().uuidString)!
+            defaults.set(old, forKey: AppAppearancePreference.defaultsKey)
+            defaults.set("Unsent Agent draft", forKey: "unrelated.fixture.draft")
+            let preference = AppAppearancePreference(defaults: defaults)
+            XCTAssertEqual(preference.mode, .phosphor, old)
+            XCTAssertEqual(preference.preferredColorScheme, .dark, old)
+            XCTAssertEqual(defaults.string(forKey: AppAppearancePreference.defaultsKey), "phosphor")
+            XCTAssertEqual(defaults.string(forKey: "unrelated.fixture.draft"), "Unsent Agent draft")
+        }
+    }
+
+    func testAppearanceDefaultsToPhosphorAndPersistsTwoDarkPresets() {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let preference = AppAppearancePreference(defaults: defaults)
-        XCTAssertEqual(preference.mode, .system)
-        XCTAssertNil(preference.preferredColorScheme)
-        preference.mode = .light
-        let relaunched = AppAppearancePreference(defaults: defaults)
-        XCTAssertEqual(relaunched.mode, .light)
-        XCTAssertEqual(relaunched.preferredColorScheme, .light)
-        relaunched.mode = .dark
-        XCTAssertEqual(AppAppearancePreference(defaults: defaults).preferredColorScheme, .dark)
-        relaunched.mode = .system
-        XCTAssertNil(AppAppearancePreference(defaults: defaults).preferredColorScheme)
+        XCTAssertEqual(preference.mode, .phosphor)
+        XCTAssertEqual(preference.preferredColorScheme, .dark)
+        preference.mode = .amber
+        XCTAssertEqual(AppAppearancePreference(defaults: defaults).mode, .amber)
+        XCTAssertEqual(preference.preferredColorScheme, .dark)
+        preference.mode = .phosphor
+        XCTAssertEqual(AppAppearancePreference(defaults: defaults).mode, .phosphor)
     }
+
 }
 
 private struct AppearanceHarness: View {
@@ -220,6 +245,7 @@ private struct AppearanceHarness: View {
     let transport: AppearanceTransport
     var body: some View {
         MobileTerminalScreen(transport: transport, target: .agent(paneID: "appearance-test"), paneID: "appearance-test", title: "Terminal")
+            .environment(\.appColorPreset, preference.mode)
             .preferredColorScheme(preference.preferredColorScheme)
     }
 }

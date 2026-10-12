@@ -2,10 +2,37 @@ import XCTest
 
 final class MacVisualAcceptanceTests: XCTestCase {
     @MainActor
+    func testSettingsOfferTwoDarkPresetsAndSwitchWithoutRestartingWindow() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["VISUAL_CAPTURE_UI"] = "1"
+        app.launchEnvironment["VISUAL_LANGUAGE"] = "en"
+        app.launchEnvironment["VISUAL_THEME"] = "phosphor"
+        app.launchEnvironment["VISUAL_SCENE"] = "settings"
+        app.launch()
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 5))
+        let settings = app.windows.firstMatch
+        let green = app.radioButtons["Phosphor"]
+        let orange = app.radioButtons["Amber"]
+        XCTAssertTrue(green.waitForExistence(timeout: 3))
+        XCTAssertTrue(orange.exists)
+        XCTAssertEqual(green.value as? Int, 1)
+        let before = XCTAttachment(screenshot: settings.screenshot())
+        before.name = "color-presets-mac-settings-phosphor"; before.lifetime = .keepAlways; add(before)
+        orange.tap()
+        XCTAssertEqual(orange.value as? Int, 1)
+        XCTAssertTrue(settings.exists)
+        let after = XCTAttachment(screenshot: settings.screenshot())
+        after.name = "color-presets-mac-settings-amber"; after.lifetime = .keepAlways; add(after)
+        green.tap()
+        XCTAssertEqual(green.value as? Int, 1)
+    }
+
+    @MainActor
     func testNativeSameDataLanguageThemeScenes() {
         continueAfterFailure = false
         for language in ["en", "zh-Hans"] {
-            for theme in ["light", "dark"] {
+            for theme in ["amber", "phosphor"] {
                 for scene in ["sidebar", "devices", "form", "settings", "terminal", "failure", "restoring", "empty"] {
                     let app = XCUIApplication()
                     app.launchEnvironment["VISUAL_CAPTURE_UI"] = "1"

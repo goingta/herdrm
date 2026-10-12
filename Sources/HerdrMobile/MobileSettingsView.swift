@@ -3,6 +3,7 @@ import SwiftUI
 struct MobileSettingsView: View {
     var showsDoneButton = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appColorPreset) private var colorPreset
     var body: some View {
         NavigationStack {
             Form {
@@ -18,6 +19,6 @@ struct MobileSettingsView: View {
                 }
             }
         }
-        .tint(Theme.accent)
+        .tint(Theme.accent(for: colorPreset))
     }
 }

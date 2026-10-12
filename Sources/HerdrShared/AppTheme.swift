@@ -32,29 +32,34 @@ enum Theme {
         #endif
     }
 
-    private static func dynamic(_ swatch: AppPalette.Swatch, alpha: Double = 1) -> Color {
-        dynamic(hex(swatch.light, alpha: alpha), hex(swatch.dark, alpha: alpha))
+    private static func color(_ swatch: AppPalette.Swatch, alpha: Double = 1) -> Color {
+        // Both presets are fixed dark. Concrete sRGB values change UIKit/AppKit
+        // tints even though the native light/dark trait itself never changes.
+        let value = swatch.dark
+        return Color(.sRGB, red: Double((value >> 16) & 255) / 255,
+            green: Double((value >> 8) & 255) / 255, blue: Double(value & 255) / 255, opacity: alpha)
     }
 
-    static let text = dynamic(AppPalette.text)
-    static let strong = dynamic(AppPalette.strong)
-    static let textSecondary = dynamic(AppPalette.dim)
-    static let textTertiary = textSecondary
-    static let textGhost = dynamic(AppPalette.ghost)
-    static let accent = dynamic(AppPalette.accent)
-    static let accentWash = dynamic(AppPalette.accent, alpha: 0.12)
-    static let primary = dynamic(AppPalette.primary)
-    static let primaryText = dynamic(AppPalette.primaryText)
-    static let panel = dynamic(AppPalette.panel)
-    static let elevated = dynamic(AppPalette.elevated)
-    static let input = dynamic(AppPalette.input)
-    static let itemWash = dynamic(AppPalette.elevated)
-    static let itemWashSelected = dynamic(AppPalette.elevated)
-    static let contentBackground = dynamic(AppPalette.background)
-    static let terminalBackground = contentBackground
-    static let statusBarBackground = panel
-    static let sidebarBorder = dynamic(AppPalette.border)
-    static let hairline = sidebarBorder
+    static var text: Color { color(AppPalette.text) }
+    static var strong: Color { color(AppPalette.strong) }
+    static var textSecondary: Color { color(AppPalette.dim) }
+    static var textTertiary: Color { textSecondary }
+    static var textGhost: Color { color(AppPalette.ghost) }
+    static var accent: Color { color(AppPalette.accent) }
+    static func accent(for preset: AppearancePreference) -> Color { color(AppPalette.swatch(.accent, preset: preset)) }
+    static var accentWash: Color { color(AppPalette.accent, alpha: 0.12) }
+    static var primary: Color { color(AppPalette.primary) }
+    static var primaryText: Color { color(AppPalette.primaryText) }
+    static var panel: Color { color(AppPalette.panel) }
+    static var elevated: Color { color(AppPalette.elevated) }
+    static var input: Color { color(AppPalette.input) }
+    static var itemWash: Color { color(AppPalette.elevated) }
+    static var itemWashSelected: Color { color(AppPalette.elevated) }
+    static var contentBackground: Color { color(AppPalette.background) }
+    static var terminalBackground: Color { contentBackground }
+    static var statusBarBackground: Color { panel }
+    static var sidebarBorder: Color { color(AppPalette.border) }
+    static var hairline: Color { sidebarBorder }
 
     #if os(iOS)
     // Preserve established semantic status colors independently of the app accent.

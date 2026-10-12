@@ -25,9 +25,7 @@ struct HerdrMobileApp: App {
             MobileWorkspaceView(model: model, navigation: navigation)
                 .environment(languagePreference)
                 .environment(\.locale, languagePreference.locale)
-                .environmentObject(appearance)
-                .preferredColorScheme(appearance.preferredColorScheme)
-                .tint(Theme.accent)
+                .appAppearance(appearance)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, model.selectedDeviceID != nil {

@@ -47,7 +47,7 @@ final class ChatTranscriptController {
     private var pollTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
     private var completionRevision: UInt64 = 0
-    private var theme = "dark"
+    private var theme = "phosphor"
     private var language = "en"
     private var textScale: Double = 1
     private var documentRevision = UUID().uuidString
@@ -174,7 +174,7 @@ final class ChatTranscriptController {
     }
 
     func setAppearance(theme: String, language: String, textScale: Double) {
-        self.theme = theme == "light" ? "light" : "dark"
+        self.theme = theme == "amber" ? "amber" : "phosphor"
         self.language = language == "zh" ? "zh" : "en"
         self.textScale = min(3, max(1, textScale))
         publish()

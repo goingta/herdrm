@@ -5,6 +5,38 @@ import WebKit
 
 @MainActor
 final class ChatTranscriptRendererTests: XCTestCase {
+    func testPresetSwitchRestylesMountedTranscriptWithoutReplacingTurnsFoldsOrScroll() async throws {
+        let renderer = ChatTranscriptRenderer()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        let host = UIViewController(); window.rootViewController = host
+        renderer.webView.frame = window.bounds; host.view.addSubview(renderer.webView); window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var doc = ChatRenderDocument(targetKey: "same-pane", historyID: "same-history", revision: "same-reply", source: "claude-transcript", turns: [
+            .init(role: "assistant", timestamp: nil, parts: [.init(kind: "thinking", text: "Retained thinking"), .init(kind: "text", text: Array(repeating: "Retained conversation", count: 100).joined(separator: "\n\n"))])
+        ], theme: "phosphor")
+        renderer.present(doc)
+        try await waitForPage(renderer) { ($0 as? String)?.contains("Retained conversation") == true }
+        _ = try await renderer.webView.callAsyncJavaScript("await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); return true", arguments: [:], in: nil, in: .page)
+        _ = try await renderer.webView.evaluateJavaScript("document.querySelector('.work-block-head').click();document.getElementById('chat').scrollTop=240;window.retainedTurn=document.querySelector('.chat-turn-agent');true")
+        let heldWebView = renderer.webView
+        doc.theme = "amber"
+        renderer.present(doc)
+        try await Task.sleep(for: .milliseconds(200))
+        let color = try await renderer.webView.evaluateJavaScript("getComputedStyle(document.getElementById('chat')).backgroundColor") as? String
+        XCTAssertEqual(color, "rgb(18, 16, 14)", "Orange uses the previously approved warm-black reference background")
+        XCTAssertTrue(renderer.webView === heldWebView)
+        let sameTurn = try await renderer.webView.evaluateJavaScript("window.retainedTurn===document.querySelector('.chat-turn-agent')") as? Bool
+        XCTAssertEqual(sameTurn, true)
+        let unfolded = try await renderer.webView.evaluateJavaScript("!document.querySelector('.work-block').classList.contains('is-folded')") as? Bool
+        XCTAssertEqual(unfolded, true)
+        let top = try await renderer.webView.evaluateJavaScript("document.getElementById('chat').scrollTop") as? Double
+        XCTAssertEqual(top ?? 0, 240, accuracy: 2)
+        doc.theme = "phosphor"; renderer.present(doc)
+        try await Task.sleep(for: .milliseconds(150))
+        let restored = try await renderer.webView.evaluateJavaScript("getComputedStyle(document.getElementById('chat')).backgroundColor") as? String
+        XCTAssertEqual(restored, "rgb(0, 0, 0)")
+    }
+
     func testWorkHeaderLocalizesActualDurationAndKeepsWaitingLiveDespiteEndTimestamp() async throws {
         let renderer = ChatTranscriptRenderer()
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))

@@ -2,9 +2,56 @@ import XCTest
 
 final class VisualAcceptanceTests: XCTestCase {
     @MainActor
+    func testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft() {
+        continueAfterFailure = false
+        let app = launch(language: "zh-Hans", theme: "phosphor")
+        XCTAssertTrue(app.buttons["workspace.tab.read-tab"].waitForExistence(timeout: 5))
+        let composer = app.textFields["agent.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap(); composer.typeText("Unsent palette draft")
+        app.staticTexts["workspace.session.title"].tap()
+        keep(app, "color-presets-chat-phosphor")
+        app.buttons["workspace.mode.terminal"].tap()
+        XCTAssertEqual(composer.value as? String, "Unsent palette draft")
+        keep(app, "color-presets-terminal-phosphor")
+        app.buttons["tab.settings"].tap()
+        let presets = app.segmentedControls["appearance.mode"]
+        XCTAssertTrue(presets.waitForExistence(timeout: 3))
+        XCTAssertEqual(presets.buttons.count, 2)
+        XCTAssertTrue(presets.buttons["荧绿"].isSelected)
+        presets.buttons["橙光"].tap()
+        XCTAssertTrue(presets.buttons["橙光"].isSelected)
+        keep(app, "color-presets-settings-amber")
+        let language = app.buttons["settings.language"]
+        let fieldShot = XCTAttachment(screenshot: language.screenshot())
+        fieldShot.name = "color-presets-language-amber"; fieldShot.lifetime = .keepAlways; add(fieldShot)
+        let languagePixels = accentPixels(language)
+        XCTAssertGreaterThan(languagePixels.orange, 10, "Native form controls must adopt the selected orange tint")
+        XCTAssertEqual(languagePixels.green, 0, "The prior green tint must not remain cached in a fixed dark trait")
+        app.buttons["tab.agent"].tap()
+        XCTAssertTrue(app.buttons["workspace.tab.read-tab"].isSelected)
+        XCTAssertEqual(composer.value as? String, "Unsent palette draft")
+        keep(app, "color-presets-terminal-amber")
+        app.buttons["workspace.mode.chat"].tap()
+        XCTAssertEqual(composer.value as? String, "Unsent palette draft")
+        keep(app, "color-presets-chat-amber")
+        app.buttons["spaces.drawer"].tap()
+        XCTAssertTrue(app.staticTexts["space.branch.visual-workspace"].waitForExistence(timeout: 3))
+        keep(app, "color-presets-drawer-amber")
+        app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "关闭侧栏", "spaces.drawer.close")).firstMatch.tap()
+        app.buttons["tab.settings"].tap()
+        presets.buttons["荧绿"].tap()
+        XCTAssertTrue(presets.buttons["荧绿"].isSelected)
+        keep(app, "color-presets-settings-phosphor")
+        app.buttons["tab.agent"].tap()
+        XCTAssertTrue(app.buttons["workspace.tab.read-tab"].isSelected)
+        XCTAssertEqual(composer.value as? String, "Unsent palette draft")
+    }
+
+    @MainActor
     func testPhoneHeaderUsesMobileReadingScaleAndNativeButtonsKeepTheirTouchArea() {
         continueAfterFailure = false
-        let app = launch(language: "zh-Hans", theme: "dark")
+        let app = launch(language: "zh-Hans", theme: "phosphor")
         let title = app.staticTexts["workspace.session.title"]
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         // Reference default title is 16px/1.2, not the native 17pt headline.
@@ -17,7 +64,7 @@ final class VisualAcceptanceTests: XCTestCase {
         keep(app, "iphone-usability-mobile-reading-scale")
         let normalHeight = title.frame.height
         app.terminate()
-        let accessible = launch(language: "zh-Hans", theme: "dark", largeText: true)
+        let accessible = launch(language: "zh-Hans", theme: "phosphor", largeText: true)
         let enlargedTitle = accessible.staticTexts["workspace.session.title"]
         XCTAssertTrue(enlargedTitle.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(enlargedTitle.frame.height, normalHeight * 1.5)
@@ -26,7 +73,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testTappingOutsideChatComposerDismissesKeyboardAndKeepsDraftAndControls() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         let composer = app.textFields["agent.composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         composer.tap(); composer.typeText("Keep this unsent draft")
@@ -48,7 +95,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testOutsideTapDismissesAgentAndOrdinaryShellComposerKeyboardsWithoutLosingDrafts() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         app.buttons["workspace.mode.terminal"].tap()
         let agent = app.textFields["agent.composer"]
         XCTAssertTrue(agent.waitForExistence(timeout: 5))
@@ -71,7 +118,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testDrawerShowsCheckoutBranchAndOmitsNumberAndNonRepositoryBranch() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         XCTAssertTrue(app.buttons["spaces.drawer"].waitForExistence(timeout: 5))
         app.buttons["spaces.drawer"].tap()
         let branch = app.staticTexts["space.branch.visual-workspace"]
@@ -85,7 +132,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testGhosttyKeyboardToggleSurvivesOpeningTapAndDismissesOnOutsideTap() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         app.buttons["workspace.mode.terminal"].tap()
         let keyboard = app.buttons["agent.keyboard"]
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
@@ -107,7 +154,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testGhosttyKeyboardKeepsComposerAboveKeyboardAndAllowsDirectFocusTransfer() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         app.buttons["workspace.mode.terminal"].tap()
         let composer = app.textFields["agent.composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -133,7 +180,7 @@ final class VisualAcceptanceTests: XCTestCase {
         continueAfterFailure = false
         defer { XCUIDevice.shared.orientation = .portrait }
         XCUIDevice.shared.orientation = .portrait
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         app.buttons["workspace.mode.terminal"].tap()
         let composer = app.textFields["agent.composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
@@ -161,7 +208,7 @@ final class VisualAcceptanceTests: XCTestCase {
     func testInactiveAgentKeyboardObserverLeavesPreviewWebInputsEditable() throws {
         continueAfterFailure = false
         let server = try PreviewHTTPFixture()
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         app.buttons["tab.preview"].tap()
         let address = app.textFields["preview.address"]
         address.tap(); address.typeText("http://127.0.0.1:\(server.port)/")
@@ -177,7 +224,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testActualReferenceChatRendersCanonicalConversation() {
         continueAfterFailure = false
-        let app = launch(language: "zh-Hans", theme: "light")
+        let app = launch(language: "zh-Hans", theme: "amber")
         XCTAssertTrue(app.buttons["workspace.mode.chat"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["workspace.mode.chat"].isSelected)
         XCTAssertTrue(app.webViews["chat.transcript"].staticTexts["SAME_CHAT_FIXTURE_RESULT"].waitForExistence(timeout: 8))
@@ -202,7 +249,7 @@ final class VisualAcceptanceTests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["VISUAL_ACCEPTANCE"] = "1"
         app.launchEnvironment["VISUAL_LANGUAGE"] = "zh-Hans"
-        app.launchEnvironment["VISUAL_THEME"] = "light"
+        app.launchEnvironment["VISUAL_THEME"] = "amber"
         app.launch()
         app.buttons["spaces.drawer"].tap()
         XCTAssertTrue(app.staticTexts["Linux · 日常开发机"].waitForExistence(timeout: 5))
@@ -214,7 +261,7 @@ final class VisualAcceptanceTests: XCTestCase {
         let server = try PreviewHTTPFixture()
         continueAfterFailure = false
         for language in ["en", "zh-Hans"] {
-            for theme in ["light", "dark"] {
+            for theme in ["amber", "phosphor"] {
                 let app = launch(language: language, theme: theme)
                 XCTAssertTrue(app.buttons["workspace.tab.read-tab"].waitForExistence(timeout: 5))
                 XCTAssertTrue(app.buttons["workspace.tab.read-tab"].isHittable)
@@ -294,7 +341,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testAccessibilityTextAndEmptyStateHaveReachableEntries() {
         continueAfterFailure = false
-        let app = launch(language: "zh-Hans", theme: "dark", largeText: true)
+        let app = launch(language: "zh-Hans", theme: "phosphor", largeText: true)
         // Physical-device AX frames can round 44pt to 43.99999999999999.
         for id in ["spaces.drawer", "workspace.mode.chat", "workspace.mode.terminal", "workspace.more", "tab.agent", "tab.preview", "tab.settings"] {
             let control = app.buttons[id]
@@ -316,7 +363,7 @@ final class VisualAcceptanceTests: XCTestCase {
         XCTAssertTrue(app.webViews["chat.transcript"].staticTexts["SAME_CHAT_FIXTURE_RESULT"].waitForExistence(timeout: 8))
         keep(app, "\(platform)-zh-Hans-dark-accessibility3-long-space")
         app.terminate()
-        let empty = launch(language: "en", theme: "light", scene: "empty")
+        let empty = launch(language: "en", theme: "amber", scene: "empty")
         XCTAssertTrue(empty.buttons["workspace.more"].waitForExistence(timeout: 5))
         XCTAssertFalse(empty.staticTexts["Add a Mac running herdr to get started."].exists)
         keep(empty, "\(platform)-en-light-empty")
@@ -325,7 +372,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testOrdinaryShellUsesReferenceComposerAndRetainsUnconfirmedDraft() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         XCTAssertTrue(app.buttons["workspace.panes"].waitForExistence(timeout: 5))
         app.buttons["workspace.panes"].tap()
         app.buttons["workspace.pane.shell"].tap()
@@ -350,7 +397,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testDrawerAndConfigurationSheetOccludeThenRetainActualReply() {
         continueAfterFailure = false
-        let app = launch(language: "en", theme: "dark")
+        let app = launch(language: "en", theme: "phosphor")
         let transcript = app.webViews["chat.transcript"]
         let reply = transcript.staticTexts["SAME_CHAT_FIXTURE_RESULT"]
         XCTAssertTrue(reply.waitForExistence(timeout: 8))
@@ -377,7 +424,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testCachedConversationAndSelectionRemainOnForegroundReturn() {
         continueAfterFailure = false
-        let app = launch(language: "zh-Hans", theme: "dark")
+        let app = launch(language: "zh-Hans", theme: "phosphor")
         let text = app.webViews["chat.transcript"].staticTexts["SAME_CHAT_FIXTURE_RESULT"]
         XCTAssertTrue(text.waitForExistence(timeout: 8))
         XCUIDevice.shared.press(.home)
@@ -404,7 +451,7 @@ final class VisualAcceptanceTests: XCTestCase {
     @MainActor
     func testChatServiceSheetAppearanceAndCancelPreservesWorkspace() {
         continueAfterFailure = false
-        for theme in ["light", "dark"] {
+        for theme in ["amber", "phosphor"] {
             let app = launch(language: "en", theme: theme)
             XCTAssertTrue(app.buttons["workspace.tab.read-tab"].waitForExistence(timeout: 5))
             app.buttons["workspace.more"].tap()
@@ -419,6 +466,22 @@ final class VisualAcceptanceTests: XCTestCase {
             XCTAssertTrue(app.textFields["agent.composer"].isHittable)
             app.terminate()
         }
+    }
+
+    @MainActor private func accentPixels(_ element: XCUIElement) -> (green: Int, orange: Int) {
+        let image = element.screenshot().image.cgImage!
+        let width = image.width, height = image.height
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var green = 0, orange = 0
+        for i in stride(from: 0, to: bytes.count, by: 4) {
+            let r = bytes[i], g = bytes[i + 1], b = bytes[i + 2]
+            if r < 100, g > 150, b < 100 { green += 1 }
+            if r > 150, g > 80, g < 220, b < 100 { orange += 1 }
+        }
+        return (green, orange)
     }
 
     @MainActor private func launch(language: String, theme: String, scene: String = "workspace", largeText: Bool = false) -> XCUIApplication {

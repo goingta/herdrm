@@ -7,16 +7,17 @@ struct MacEvidenceScene: View {
     @StateObject private var model: AppModel
     private let fixture: VisualFixture
     private let scene: String
-    private let dark: Bool
+    @StateObject private var appearance: AppAppearancePreference
     init() {
         let fixture = try! VisualFixture.load()
         self.fixture = fixture
         let env = ProcessInfo.processInfo.environment
         scene = env["VISUAL_SCENE"] ?? "sidebar"
-        dark = env["VISUAL_THEME"] == "dark"
+        let preference = AppAppearancePreference()
+        preference.mode = AppearancePreference(rawValue: env["VISUAL_THEME"] ?? "") ?? .phosphor
+        _appearance = StateObject(wrappedValue: preference)
         AppLanguagePreference.shared.selection = AppLanguage(rawValue: env["VISUAL_LANGUAGE"] ?? "en")!
-        UserDefaults.standard.set(dark ? "dark" : "light", forKey: AppAppearancePreference.defaultsKey)
-        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("herdr-mac-ui-fixture")
         let store = DeviceStore(directory: dir)
         let device = Device(id: fixture.deviceID, name: fixture.deviceName, kind: .ssh(target: "\(fixture.username)@\(fixture.host)"), osID: "ubuntu")
@@ -51,14 +52,16 @@ struct MacEvidenceScene: View {
         }
         .environment(AppLanguagePreference.shared)
         .environment(\.locale, AppLanguagePreference.shared.locale)
-        .environment(\.colorScheme, dark ? .dark : .light)
+        .appAppearance(appearance)
         .background(Theme.contentBackground)
         .tint(Theme.accent)
     }
 }
 private struct MacEvidenceTerminal: NSViewRepresentable {
+    @Environment(\.appColorPreset) private var colorPreset
     let payload: String
     func makeNSView(context: Context) -> LineBreakTerminalView {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         let session = InMemoryTerminalSession(write: { _ in }, resize: { _ in })
         let view = LineBreakTerminalView(frame: .zero)
         view.controller = GhosttyRuntime.controller
@@ -66,5 +69,7 @@ private struct MacEvidenceTerminal: NSViewRepresentable {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { session.receive(Data(payload.utf8)) }
         return view
     }
-    func updateNSView(_ view: LineBreakTerminalView, context: Context) {}
+    func updateNSView(_ view: LineBreakTerminalView, context: Context) {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
+    }
 }

@@ -8,7 +8,7 @@ For a manual screenshot after building the fixture:
 
 ```sh
 xcrun simctl install "$SIMULATOR_ID" build-ios/Build/Products/Debug-iphonesimulator/NavigationHarness.app
-xcrun simctl launch "$SIMULATOR_ID" dev.bybee.herdrm.navigation-fixture -AppleLanguages '(zh-Hans)' -AppleLocale zh_Hans -app.theme dark
+xcrun simctl launch "$SIMULATOR_ID" dev.bybee.herdrm.navigation-fixture -AppleLanguages '(zh-Hans)' -AppleLocale zh_Hans -app.theme phosphor
 xcrun simctl io "$SIMULATOR_ID" screenshot /private/tmp/herdr-navigation-fixture.png
 ```
 
@@ -39,3 +39,5 @@ The visual host also binds its development machine to `https://visual-chat-fixtu
 `reference-capture.mjs` builds no UI of its own. Run it with an already-built public herdr-web-ui checkout and an external output directory. It serves that checkout's actual `dist` on loopback, adapts canonical scene data to the reference's session envelope, and opens a fresh headless Chrome context for each language/theme. Screenshots represent a 390×750 CSS-pixel browser viewport at scale 3, without Safari or iOS chrome. This differs from a 390×844 native iPhone screenshot. The reference's creation button and native bottom app bar differences are explicitly approved scope.
 
 Native keyboard acceptance checks successful real tap/type, visible system keyboard, retained draft, and composer geometry above the keyboard. iOS 26.5's multiline TextField AX `isHittable` can report false while the focused field visibly accepts input; header, drawer and root buttons retain direct `isHittable`/44pt gates.
+
+Color preset fixtures use `VISUAL_THEME=phosphor|amber`, both fixed dark. Old `light`, `dark`, and `system` arguments resolve to Phosphor just like legacy preference migration; they do not expose a third appearance.

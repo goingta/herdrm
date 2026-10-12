@@ -3,10 +3,10 @@ import GhosttyTerminal
 
 /// Identical terminal colors on both clients, including explicit cursor/selection.
 enum TerminalPalette {
-    static let darkBackgroundHex = AppPalette.background.hex(dark: true)
-    static let darkForegroundHex = AppPalette.text.hex(dark: true)
-    static let lightBackgroundHex = AppPalette.background.hex(dark: false)
-    static let lightForegroundHex = AppPalette.text.hex(dark: false)
+    static var darkBackgroundHex: String { AppPalette.background.hex(dark: true) }
+    static var darkForegroundHex: String { AppPalette.text.hex(dark: true) }
+    static var lightBackgroundHex: String { AppPalette.background.hex(dark: false) }
+    static var lightForegroundHex: String { AppPalette.text.hex(dark: false) }
 
     /// The 16-color ANSI palette used by Apple's Terminal.app (formerly
     /// `SwiftTerm.Color.terminalAppColors`, inlined with the renderer switch).
@@ -37,20 +37,20 @@ enum TerminalPalette {
     }
 
 
-    static func makeTheme() -> TerminalTheme {
-        func configuration(dark: Bool) -> TerminalConfiguration {
-            TerminalConfiguration { builder in
-                builder.withBackground(dark ? darkBackgroundHex : lightBackgroundHex)
-                builder.withForeground(dark ? darkForegroundHex : lightForegroundHex)
-                builder.withCursorColor(AppPalette.accent.hex(dark: dark))
-                builder.withCursorText(dark ? darkBackgroundHex : lightBackgroundHex)
-                builder.withSelectionBackground(AppPalette.selection.hex(dark: dark))
-                builder.withSelectionForeground(AppPalette.text.hex(dark: dark))
-                for (index, color) in (dark ? darkPalette : lightPalette).enumerated() {
-                    builder.withPalette(index, color: String(format: "#%02X%02X%02X", color.red, color.green, color.blue))
-                }
+    static func makeTheme(preset: AppearancePreference = .phosphor) -> TerminalTheme {
+        func hex(_ role: AppPalette.Role) -> String { AppPalette.swatch(role, preset: preset).hex(dark: true) }
+        let configuration = TerminalConfiguration { builder in
+            builder.withBackground(hex(.background))
+            builder.withForeground(hex(.text))
+            builder.withCursorColor(hex(.accent))
+            builder.withCursorText(hex(.background))
+            builder.withSelectionBackground(hex(.selection))
+            builder.withSelectionForeground(hex(.text))
+            // TUI ANSI/status/brand colors remain unchanged in both presets.
+            for (index, color) in darkPalette.enumerated() {
+                builder.withPalette(index, color: String(format: "#%02X%02X%02X", color.red, color.green, color.blue))
             }
         }
-        return TerminalTheme(light: configuration(dark: false), dark: configuration(dark: true))
+        return TerminalTheme(light: configuration, dark: configuration)
     }
 }
