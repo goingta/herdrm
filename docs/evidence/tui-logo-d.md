@@ -56,3 +56,5 @@ App 构建或真机图标验收；合入后随正式 App 构建、安装，由�
 
 本资源改动未修改 `project.yml`、`Sources/HerdrMobile/Info.plist`、
 `Sources/HerdrM/AppIcon.icon/icon.json`，未修改 bundle 标识、签名或 ATS 设置。
+
+最终与双主题一起集成至 `b29c7387`，完整 Mac/iPhone App 构建成功。正式 iPhone 包更新安装成功；自动启动因手机锁屏被拒绝，主屏幕 D 图标的用户真机验收仍待完成，不能以 actool 结果代替。

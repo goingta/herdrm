@@ -44,3 +44,9 @@
 - [原生语言控件橙光](color-presets/color-presets-language-amber.png)
 
 正式 `Sources/HerdrMobile/Info.plist` SHA256 仍为 `2642238694cdfe5c7777b1972b046f8b69572b4f822b8fed3e54096018380c2a`。`project.yml` 无修改；没有放宽 ATS、改签名配置或迁移私钥。
+
+## 最终集成与真机安装
+
+最终源 `5a59a568` 经 merger 集成为 `b29c738719d1edc48b24337d08476101380e465e`，树相同。独立 Standards / Spec 完整审查 `30bbb63...5a59a56`，各 0 项剩余问题。
+
+集成后的完整 Mac target 和个人签名 iPhone target 均 BUILD SUCCEEDED：`/private/tmp/herdr-color-combined-mac-build.log`、`/private/tmp/herdr-color-presets-device-build.log`。正式包已更新安装到连接的 iPhone 13 / iOS 18.7.3，Bundle `dev.bybee.herdrm.ios`，保留原数据和 Keychain。自动启动被 FBS Locked 拒绝（手机未解锁）；这是本次的实际原因，不沿用上一轮签名/信任诊断。已请用户解锁手动打开，验收新 Logo、两套固定深色默认荧绿及切色保留上下文。安装与构建不替代这次真机验收；真实服务/发送/锁屏原门槛仍保留。
