@@ -1,0 +1,28 @@
+# V03 — 统一中英文文案与语言设置
+
+状态：已批准并发布，标签 ready-for-agent；实施尚未开始。GitHub：[[双端 UI] V03 — 统一中英文文案与语言设置](https://github.com/goingta/herdrm/issues/22)。
+
+## What to build
+
+用户在两端选择跟随系统、中文或 English，看到一致的产品术语和设置文案，远端名称与终端输出保持原样。
+
+## Acceptance criteria
+
+- [ ] 两端接入同一中英文资源，提供跟随系统/中文/English；当前客户端保存选择并在重启后恢复。
+- [ ] 开发机、Space/工作区、Agent、连接和错误提示采用一致术语；不翻译远端项目名称、Agent 名称或终端输出。
+- [ ] 无开发机时提示添加运行 herdr 的开发机，涵盖 Linux 语境，不继续限定为添加 Mac。
+- [ ] 语言切换更新 App 自有界面，不重连 SSH 或丢失选择与草稿；语言资源的缺失有明确的基础语言回退。
+
+## Verification
+
+分别在中文和英文系统设置下选择三种语言模式，检查实际界面、重启保留及连接连续性，使用包含中文和英文的远端名称验证原样显示。
+
+## Blocked by
+
+None — can start immediately.
+
+## Spec coverage
+
+第一轮选择 2；共享语言资源和既有页面术语。 基于 Mac 与 iPhone 视觉一致性规格 v1.0，产品选择、任务颗粒度和依赖均已确认。
+
+<!-- herdrm-visual-v1-ticket:V03 -->

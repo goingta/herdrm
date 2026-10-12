@@ -180,6 +180,8 @@ public struct WorkspaceInfo: Codable, Sendable, Identifiable, Equatable {
     public let tabCount: Int?
     public let activeTabID: String?
     public let agentStatusRaw: String?
+    /// Newer servers report the Space's checkout independently of pane cwd.
+    public var worktree: WorkspaceCheckoutInfo? = nil
 
     public var id: String { workspaceID }
     public var status: AgentStatus { AgentStatus(wire: agentStatusRaw) }
@@ -193,7 +195,13 @@ public struct WorkspaceInfo: Codable, Sendable, Identifiable, Equatable {
         case tabCount = "tab_count"
         case activeTabID = "active_tab_id"
         case agentStatusRaw = "agent_status"
+        case worktree
     }
+}
+
+public struct WorkspaceCheckoutInfo: Codable, Sendable, Equatable {
+    public let checkoutPath: String
+    enum CodingKeys: String, CodingKey { case checkoutPath = "checkout_path" }
 }
 
 /// Any pane in the session, agent or bare shell.

@@ -39,9 +39,9 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         content.title = title ?? agent.title
         switch status {
         case .blocked:
-            content.body = String(localized: "\(agent.agent) needs your input · \(spaceName) · \(deviceName)")
+            content.body = AppLocalization.string("\(agent.agent) needs your input · \(spaceName) · \(deviceName)")
         case .done:
-            content.body = String(localized: "\(agent.agent) finished · \(spaceName) · \(deviceName)")
+            content.body = AppLocalization.string("\(agent.agent) finished · \(spaceName) · \(deviceName)")
         default:
             return
         }

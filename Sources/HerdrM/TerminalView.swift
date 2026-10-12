@@ -15,38 +15,12 @@ enum TerminalDefaults {
     /// has selectable weights — named families ship fixed faces and ignore this.
     static let defaultFontWeight: Double = 0
     static let defaultLineSpacing: Double = 1.0
-    static let darkBackgroundHex = "#101012"
-    static let darkForegroundHex = "#D6D6D6"
-    static let lightBackgroundHex = "#FFFFFF"
-    static let lightForegroundHex = "#3A3A3A"
-
-    /// The 16-color ANSI palette used by Apple's Terminal.app (formerly
-    /// `SwiftTerm.Color.terminalAppColors`, inlined with the renderer switch).
-    static let darkPalette: [(red: Int, green: Int, blue: Int)] = [
-        (0, 0, 0), (194, 54, 33), (37, 188, 36), (173, 173, 39),
-        (73, 46, 225), (211, 56, 211), (51, 187, 200), (203, 204, 205),
-        (129, 131, 131), (252, 57, 31), (49, 231, 34), (234, 236, 35),
-        (88, 51, 255), (249, 53, 248), (20, 240, 240), (233, 235, 235),
-    ]
-
-    /// Per entry, keep whichever of the original and luminance-flipped color reads
-    /// better on the light background: the flip rescues colors designed for dark
-    /// backgrounds (white, the bright variants), but ANSI red/blue/magenta/black
-    /// are already dark and would wash out to pastels.
-    static let lightPalette: [(red: Int, green: Int, blue: Int)] = darkPalette.map { color in
-        let flipped = LightTerminalANSIAdapter.lightRGB(
-            red: color.red,
-            green: color.green,
-            blue: color.blue
-        )
-        let originalContrast = LightTerminalANSIAdapter.contrastOnWhite(
-            red: color.red, green: color.green, blue: color.blue
-        )
-        let flippedContrast = LightTerminalANSIAdapter.contrastOnWhite(
-            red: flipped.red, green: flipped.green, blue: flipped.blue
-        )
-        return originalContrast >= flippedContrast ? color : flipped
-    }
+    static let darkBackgroundHex = TerminalPalette.darkBackgroundHex
+    static let darkForegroundHex = TerminalPalette.darkForegroundHex
+    static let lightBackgroundHex = TerminalPalette.lightBackgroundHex
+    static let lightForegroundHex = TerminalPalette.lightForegroundHex
+    static let darkPalette = TerminalPalette.darkPalette
+    static let lightPalette = TerminalPalette.lightPalette
 
     /// Bundled Nerd Font symbols (MIT, github.com/ryanoasis/nerd-fonts), used
     /// as a fallback for the icon glyphs agent TUIs draw.
@@ -201,27 +175,8 @@ enum GhosttyRuntime {
         }
     }
 
-    private static func makeTheme() -> TerminalTheme {
-        let dark = TerminalConfiguration { builder in
-            builder.withBackground(TerminalDefaults.darkBackgroundHex)
-            builder.withForeground(TerminalDefaults.darkForegroundHex)
-            for (index, color) in TerminalDefaults.darkPalette.enumerated() {
-                builder.withPalette(index, color: hex(color))
-            }
-        }
-        let light = TerminalConfiguration { builder in
-            builder.withBackground(TerminalDefaults.lightBackgroundHex)
-            builder.withForeground(TerminalDefaults.lightForegroundHex)
-            for (index, color) in TerminalDefaults.lightPalette.enumerated() {
-                builder.withPalette(index, color: hex(color))
-            }
-        }
-        return TerminalTheme(light: light, dark: dark)
-    }
+    private static func makeTheme() -> TerminalTheme { TerminalPalette.makeTheme() }
 
-    private static func hex(_ color: (red: Int, green: Int, blue: Int)) -> String {
-        String(format: "#%02X%02X%02X", color.red, color.green, color.blue)
-    }
 }
 
 /// The child's complete environment: TERM/COLORTERM/LANG plus the few user
@@ -254,6 +209,10 @@ final class TerminalProcessHost {
     /// Guards `lightAdapter`: written on the main thread (theme switch), read on
     /// the process's IO queue.
     private let adapterLock = NSLock()
+    private var outputReceived = false
+    var hasReceivedOutput: Bool {
+        adapterLock.lock(); defer { adapterLock.unlock() }; return outputReceived
+    }
     private var lightAdapter: LightTerminalANSIAdapter?
     private let viewportBox = ViewportBox()
 
@@ -304,10 +263,19 @@ final class TerminalProcessHost {
         adapterLock.lock()
         lightAdapter = enabled ? LightTerminalANSIAdapter() : nil
         adapterLock.unlock()
+        // Repaint explicitly colored TUI cells through the existing PTY.
+        // TIOCSWINSZ only emits SIGWINCH when the grid actually changes.
+        if let viewport {
+            process.resize(columns: viewport.columns, rows: viewport.rows > 1 ? viewport.rows - 1 : 1,
+                           widthPixels: viewport.widthPixels, heightPixels: viewport.heightPixels)
+            process.resize(columns: viewport.columns, rows: viewport.rows,
+                           widthPixels: viewport.widthPixels, heightPixels: viewport.heightPixels)
+        }
     }
 
     private func receiveOutput(_ data: Data) {
         adapterLock.lock()
+        if !data.isEmpty { outputReceived = true }
         var adapter = lightAdapter
         let bytes = [UInt8](data)
         let transformed = adapter?.transform(bytes[...])
@@ -355,9 +323,9 @@ private enum ClipboardFileError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupportedItem: return String(localized: "Remote paste supports files and folders, not special files.")
-        case .imageEncodingFailed: return String(localized: "The clipboard image could not be encoded as PNG.")
-        case .transferUnavailable: return String(localized: "The remote file transfer service is unavailable.")
+        case .unsupportedItem: return AppLocalization.string("Remote paste supports files and folders, not special files.")
+        case .imageEncodingFailed: return AppLocalization.string("The clipboard image could not be encoded as PNG.")
+        case .transferUnavailable: return AppLocalization.string("The remote file transfer service is unavailable.")
         }
     }
 }
@@ -763,7 +731,7 @@ final class LineBreakTerminalView: AppTerminalView {
 
     override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
 
-    override func accessibilityHelp() -> String? { String(localized: "Terminal content area") }
+    override func accessibilityHelp() -> String? { AppLocalization.string("Terminal content area") }
 
     override func accessibilityValue() -> Any? { accessibilityText }
 
@@ -886,20 +854,20 @@ final class LineBreakTerminalView: AppTerminalView {
         if attachedSurface?.hasSelection() == true,
            let selection = attachedSurface?.readSelection(),
            !selection.isEmpty {
-            menu.addItem(makeItem(String(localized: "Copy"), #selector(copySelectionFromMenu(_:))))
+            menu.addItem(makeItem(AppLocalization.string("Copy"), #selector(copySelectionFromMenu(_:))))
             if let url = Self.firstURL(in: selection) {
                 menu.addItem(.separator())
-                let open = makeItem(String(localized: "Open Link"), #selector(openLinkFromMenu(_:)))
+                let open = makeItem(AppLocalization.string("Open Link"), #selector(openLinkFromMenu(_:)))
                 open.representedObject = url
                 menu.addItem(open)
-                let copyLink = makeItem(String(localized: "Copy Link Address"), #selector(copyLinkFromMenu(_:)))
+                let copyLink = makeItem(AppLocalization.string("Copy Link Address"), #selector(copyLinkFromMenu(_:)))
                 copyLink.representedObject = url
                 menu.addItem(copyLink)
             }
             menu.addItem(.separator())
         }
-        menu.addItem(makeItem(String(localized: "Paste"), #selector(performPaste(_:))))
-        menu.addItem(makeItem(String(localized: "Select All"), #selector(selectAll(_:))))
+        menu.addItem(makeItem(AppLocalization.string("Paste"), #selector(performPaste(_:))))
+        menu.addItem(makeItem(AppLocalization.string("Select All"), #selector(selectAll(_:))))
         return menu
     }
 
@@ -1390,6 +1358,7 @@ private extension NSView {
 /// Embeds a Ghostty terminal running a direct agent or ordinary-terminal attach
 /// (locally or over SSH).
 struct AttachTerminalView: NSViewRepresentable {
+    @Environment(\.appColorPreset) private var colorPreset
     let device: Device
     let target: TerminalAttachTarget
     /// Registry identity (the `AttachedEntry.id`), so the view stays addressable for
@@ -1426,11 +1395,15 @@ struct AttachTerminalView: NSViewRepresentable {
     var onExit: ((Int32?) -> Void)? = nil
     /// Delivers the created view so a focus tracker can observe its window's
     /// first responder without retaining the terminal itself.
+    var readState: AgentReadState? = nil
+    var unreadKey: AgentUnreadKey? = nil
+    var onReadStateChanged: () -> Void = {}
     var onViewReady: ((LineBreakTerminalView) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> LineBreakTerminalView {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         let host = TerminalProcessHost()
         let view = LineBreakTerminalView(frame: .zero)
         view.processHost = host
@@ -1438,6 +1411,13 @@ struct AttachTerminalView: NSViewRepresentable {
         context.coordinator.view = view
         context.coordinator.host = host
         context.coordinator.sessionID = sessionID
+        context.coordinator.readState = readState
+        context.coordinator.unreadKey = unreadKey
+        context.coordinator.onReadStateChanged = onReadStateChanged
+        context.coordinator.service = HerdrService(device: device)
+        if let unreadKey { context.coordinator.generation = readState?.beginTerminal(unreadKey) }
+        context.coordinator.setVisible(isVisible)
+        context.coordinator.startPresentationChecks()
         context.coordinator.onExit = onExit
         host.onExit = { [weak coordinator = context.coordinator] code in
             coordinator?.processDidExit(code)
@@ -1471,10 +1451,12 @@ struct AttachTerminalView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LineBreakTerminalView, context: Context) {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         configurePasteHandling(nsView)
         context.coordinator.onExit = onExit
         configureAppearance(nsView)
         nsView.setSurfaceVisible(isVisible)
+        context.coordinator.setVisible(isVisible)
     }
 
     /// Re-applied on update because capabilities can arrive after the terminal
@@ -1488,6 +1470,7 @@ struct AttachTerminalView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: LineBreakTerminalView, coordinator: Coordinator) {
         // A view being torn down must not report its own teardown as an exit.
+        coordinator.stopPresentationChecks()
         coordinator.onExit = nil
         if let sessionID = coordinator.sessionID {
             AttachViewRegistry.unregister(sessionID)
@@ -1526,7 +1509,79 @@ struct AttachTerminalView: NSViewRepresentable {
         weak var view: LineBreakTerminalView?
         var host: TerminalProcessHost?
 
+        var readState: AgentReadState?
+        var unreadKey: AgentUnreadKey?
+        var generation: UUID?
+        var onReadStateChanged: () -> Void = {}
+        var service: HerdrService?
+        private var visible = false
+        private var contentVerified = false
+        private var verifying = false
+        private var presentationEpoch = 0
+        private var nextVerification = Date.distantPast
+        nonisolated(unsafe) private var resignObserver: NSObjectProtocol?
+        private var ended = false
+        nonisolated(unsafe) private var presentationTimer: Timer?
+
+        func setVisible(_ value: Bool) {
+            visible = value
+            if !value { hideContent() }
+        }
+
+        func startPresentationChecks() {
+            resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.willResignActiveNotification,
+                object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hideContent() }
+            }
+            let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.checkPresentation() }
+            }
+            presentationTimer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+
+        private func hideContent() {
+            presentationEpoch += 1
+            contentVerified = false
+            if let key = unreadKey, let generation { readState?.hideTerminal(key, generation: generation) }
+        }
+
+        func stopPresentationChecks() {
+            presentationTimer?.invalidate()
+            presentationTimer = nil
+            ended = true
+            if let key = unreadKey, let generation { readState?.endTerminal(key, generation: generation) }
+        }
+
+        private func checkPresentation() {
+            guard visible, NSApp.isActive, !ended, let view, view.window?.isVisible == true, view.window?.isKeyWindow == true else {
+                hideContent(); return
+            }
+            guard !contentVerified, !verifying, Date() >= nextVerification, let key = unreadKey,
+                  let generation, let readState, let service, let host, host.hasReceivedOutput else { return }
+            verifying = true
+            nextVerification = Date().addingTimeInterval(1)
+            let epoch = presentationEpoch
+            Task { @MainActor [weak self, weak view] in
+                defer { self?.verifying = false }
+                guard let view else { return }
+                let confirmed = await TerminalPresentation.confirmRead(
+                    view: view, terminal: host.session, readState: readState, key: key, generation: generation,
+                    isCurrent: { [weak self] in
+                        guard let self else { return false }
+                        return self.visible && !self.ended && self.generation == generation && self.presentationEpoch == epoch
+                    },
+                    readPane: { try await service.readPane(paneID: key.paneID).text }
+                )
+                guard confirmed, let self else { return }
+                self.contentVerified = true
+                self.onReadStateChanged()
+            }
+        }
+
         deinit {
+            presentationTimer?.invalidate()
+            if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
             if let authorizationID {
                 try? SSHCredentialStore.removeAuthorization(authorizationID)
             }
@@ -1553,6 +1608,7 @@ struct AttachTerminalView: NSViewRepresentable {
         }
 
         func processDidExit(_ code: Int32?) {
+            stopPresentationChecks()
             discardAuthorization()
             let callback = onExit
             onExit = nil  // report once
@@ -1654,6 +1710,7 @@ enum ShellViewRegistry {
 }
 
 struct ShellTerminalView: NSViewRepresentable {
+    @Environment(\.appColorPreset) private var colorPreset
     /// Session identity for the registry; nil for the ⌘D split shell.
     var sessionID: UUID?
     var device: Device = .local
@@ -1677,6 +1734,7 @@ struct ShellTerminalView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> LineBreakTerminalView {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         let host = TerminalProcessHost()
         let view = LineBreakTerminalView(frame: .zero)
         view.processHost = host
@@ -1729,6 +1787,7 @@ struct ShellTerminalView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LineBreakTerminalView, context: Context) {
+        GhosttyRuntime.controller.setTheme(TerminalPalette.makeTheme(preset: colorPreset))
         context.coordinator.onExit = onExit
         nsView.onAttachmentError = onAttachmentError
         nsView.onAttachmentUploadingChanged = onAttachmentUploadingChanged
@@ -1827,7 +1886,7 @@ final class LinkCopyPopup: NSVisualEffectView {
     init(link: TerminalLink, onCopy: @escaping (TerminalLink) -> Void) {
         self.link = link
         self.onCopy = onCopy
-        button = NSButton(title: String(localized: "Copy"), target: nil, action: nil)
+        button = NSButton(title: AppLocalization.string("Copy"), target: nil, action: nil)
         super.init(frame: .zero)
         material = .popover
         blendingMode = .withinWindow
@@ -1854,7 +1913,7 @@ final class LinkCopyPopup: NSVisualEffectView {
             button.topAnchor.constraint(equalTo: topAnchor, constant: 3),
             button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
         ])
-        setAccessibilityLabel(String(localized: "Copy"))
+        setAccessibilityLabel(AppLocalization.string("Copy"))
     }
 
     @available(*, unavailable)
@@ -1874,7 +1933,7 @@ final class LinkCopyPopup: NSVisualEffectView {
 
     /// Confirms the copy in place, then lets the owner close the popup.
     func showCopied(then done: @escaping () -> Void) {
-        button.title = String(localized: "Copied")
+        button.title = AppLocalization.string("Copied")
         button.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
         button.isEnabled = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: done)

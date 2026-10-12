@@ -1,0 +1,66 @@
+[
+  {
+    "file": "color-presets-settings-phosphor.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771940.18,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-drawer-amber.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771937.624,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-chat-amber.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771936.105,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-terminal-amber.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771935.614,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-language-amber.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771935.026,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-settings-amber.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771934.944,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-terminal-phosphor.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771931.687,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  },
+  {
+    "file": "color-presets-chat-phosphor.png",
+    "sourceCommit": "8d27c7124bea257fcdead5dec7f4c8a9ffb641ce",
+    "test": "VisualAcceptanceTests/testTwoPresetSettingsRestyleBothModesAndPreserveSpaceTabAndDraft",
+    "timestamp": 1791771931.209,
+    "device": "4556EE75-CBAD-47CA-8765-C0A5EDA8709F",
+    "sourceResult": "Test-HerdrNavigationAcceptance-2026.10.12_10-25-18-+0800.xcresult"
+  }
+]

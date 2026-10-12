@@ -1658,7 +1658,7 @@ private enum WeakNetworkProxyFixtureError: Error {
     case unreachable
 }
 
-private struct SessionDriverTestEnvironment: Sendable {
+struct SessionDriverTestEnvironment: Sendable {
     let endpoint: SSHEndpoint
     let username: String
     let privateKey: Curve25519.Signing.PrivateKey

@@ -40,6 +40,10 @@ public struct SSHExecResult: Sendable, Equatable {
 public typealias SSHSigningClosure = @Sendable (Data) throws -> Data
 
 public enum SSHError: Error, Sendable, Equatable {
+    case httpConnectUnavailable
+    case httpConnectTimedOut
+    case httpConnectRejected(status: Int)
+    case invalidHTTPConnectResponse
     case invalidEndpoint
     case connectionFailed
     case algorithmNegotiationFailed

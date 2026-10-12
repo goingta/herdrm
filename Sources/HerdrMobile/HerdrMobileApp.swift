@@ -3,6 +3,9 @@ import SwiftUI
 @main
 struct HerdrMobileApp: App {
     @State private var model = MobileAppModel()
+    @State private var navigation = MobileWorkspaceNavigation()
+    @State private var languagePreference = AppLanguagePreference.shared
+    @StateObject private var appearance = AppAppearancePreference()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -19,13 +22,16 @@ struct HerdrMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MobileRootView(model: model)
+            MobileWorkspaceView(model: model, navigation: navigation)
+                .environment(languagePreference)
+                .environment(\.locale, languagePreference.locale)
+                .appAppearance(appearance)
         }
         .onChange(of: scenePhase) { _, phase in
-            // iOS tears sockets down in the background; on return, re-prove the
-            // connection instead of trusting a held one.
             if phase == .active, model.selectedDeviceID != nil {
-                model.connectSelected()
+                model.resumeSelected()
+            } else if phase != .active {
+                model.suspendSelected()
             }
         }
     }

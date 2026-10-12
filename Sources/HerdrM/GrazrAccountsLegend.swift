@@ -94,24 +94,24 @@ struct GrazrAccountsLegend: View {
     private func status(of account: GrazrAccount) -> (String, Color) {
         if account.id == report.active {
             let eta = report.swapEstimate(for: account, now: now).flatMap { $0 > now ? $0 : nil }
-            return (eta.map { String(localized: "active · ~\(GrazrStyle.time($0, now: now))") } ?? String(localized: "active"), Theme.statsAccount)
+            return (eta.map { AppLocalization.string("active · ~\(GrazrStyle.time($0, now: now))") } ?? AppLocalization.string("active"), Theme.statsAccount)
         }
         if let block = report.block(for: account, now: now) {
-            return (String(localized: "blocked: \(block.reason)"), Theme.danger)
+            return (AppLocalization.string("blocked: \(block.reason)"), Theme.danger)
         }
         if account.id == next?.id {
-            guard let refill = futureRefill(of: account) else { return (String(localized: "NEXT ▸"), Theme.accent) }
-            return (String(localized: "NEXT · refills \(GrazrStyle.time(refill, now: now))"), Theme.accent)
+            guard let refill = futureRefill(of: account) else { return (AppLocalization.string("NEXT ▸"), Theme.accent) }
+            return (AppLocalization.string("NEXT · refills \(GrazrStyle.time(refill, now: now))"), Theme.accent)
         }
-        if !report.isListed(account) { return (String(localized: "not in ACCOUNTS"), Theme.textTertiary) }
-        if account.windows.isEmpty { return (String(localized: "no reading yet"), Theme.textTertiary) }
+        if !report.isListed(account) { return (AppLocalization.string("not in ACCOUNTS"), Theme.textTertiary) }
+        if account.windows.isEmpty { return (AppLocalization.string("no reading yet"), Theme.textTertiary) }
         let low = account.windows.filter { window in
             guard let threshold = report.threshold(for: window), window.isOpen(now: now) else { return false }
             return window.remaining < threshold
         }
         if let refill = low.compactMap(\.resetsAt).max() {
-            return (String(localized: "spent · resets \(GrazrStyle.time(refill, now: now))"), Theme.textTertiary)
+            return (AppLocalization.string("spent · resets \(GrazrStyle.time(refill, now: now))"), Theme.textTertiary)
         }
-        return (String(localized: "ready"), Theme.textSecondary)
+        return (AppLocalization.string("ready"), Theme.textSecondary)
     }
 }

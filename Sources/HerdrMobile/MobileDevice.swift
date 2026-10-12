@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Network
 
 /// A Mac (or other host) running herdr, reached over SSH or through the
 /// herdr.tailcat plugin's tunnel. Unlike the Mac app there is no "Local"
@@ -11,6 +12,11 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         /// Control plane only on iOS: the tunnel carries the herdr API and
         /// client sockets but no shell, so terminal attach stays SSH-only.
         case tailcat
+    }
+
+    enum SSHRoute: String, Codable, CaseIterable {
+        case direct
+        case httpConnect
     }
 
     enum AuthMethod: String, Codable, CaseIterable {
@@ -26,8 +32,12 @@ struct MobileDevice: Codable, Identifiable, Hashable {
     var port: UInt16
     var username: String
     var authMethod: AuthMethod
+    var sshRoute: SSHRoute
+    var gatewayHost: String
+    var gatewayPort: UInt16
     /// Socket path override; nil means ~/.config/herdr/herdr.sock on the host.
     var socketPath: String?
+    var chatConfiguration: WebChatConfiguration?
 
     init(
         id: UUID = UUID(),
@@ -37,7 +47,11 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         port: UInt16 = 22,
         username: String = "",
         authMethod: AuthMethod = .deviceKey,
-        socketPath: String? = nil
+        socketPath: String? = nil,
+        sshRoute: SSHRoute = .direct,
+        gatewayHost: String = "",
+        gatewayPort: UInt16 = 8080,
+        chatConfiguration: WebChatConfiguration? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -47,6 +61,10 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         self.username = username
         self.authMethod = authMethod
         self.socketPath = socketPath
+        self.sshRoute = sshRoute
+        self.gatewayHost = gatewayHost
+        self.gatewayPort = gatewayPort
+        self.chatConfiguration = chatConfiguration
     }
 
     /// Devices stored before the tailcat kind existed decode as SSH.
@@ -60,16 +78,69 @@ struct MobileDevice: Codable, Identifiable, Hashable {
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         authMethod = try container.decodeIfPresent(AuthMethod.self, forKey: .authMethod) ?? .deviceKey
         socketPath = try container.decodeIfPresent(String.self, forKey: .socketPath)
+        sshRoute = try container.decodeIfPresent(SSHRoute.self, forKey: .sshRoute) ?? .direct
+        gatewayHost = try container.decodeIfPresent(String.self, forKey: .gatewayHost) ?? ""
+        gatewayPort = try container.decodeIfPresent(UInt16.self, forKey: .gatewayPort) ?? 8080
+        chatConfiguration = try container.decodeIfPresent(WebChatConfiguration.self, forKey: .chatConfiguration)
     }
 
     var isTailcat: Bool { kind == .tailcat }
+
+    func validated() throws -> MobileDevice {
+        var result = self
+        result.chatConfiguration = try chatConfiguration?.validated()
+        result.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind == .ssh {
+            result.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !result.host.isEmpty else { throw MobileDeviceError.emptyHost }
+            guard !result.username.isEmpty else { throw MobileDeviceError.emptyUsername }
+            guard port > 0 else { throw MobileDeviceError.invalidPort }
+            result.gatewayHost = gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            if sshRoute == .httpConnect {
+                guard !result.gatewayHost.isEmpty,
+                      !result.gatewayHost.contains(where: { $0.isWhitespace || "/@?#[]".contains($0) }),
+                      (!result.gatewayHost.contains(":") || IPv6Address(result.gatewayHost) != nil),
+                      !result.gatewayHost.unicodeScalars.contains(where: { $0.value < 33 || $0.value == 127 }) else {
+                    throw MobileDeviceError.invalidGatewayHost
+                }
+                guard gatewayPort > 0 else { throw MobileDeviceError.invalidGatewayPort }
+            }
+            let socket = socketPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.socketPath = socket?.isEmpty == false ? socket : nil
+        }
+        if result.name.isEmpty {
+            result.name = isTailcat ? AppLocalization.string("Tailcat device") : result.host
+        }
+        return result
+    }
 
     var subtitle: String {
         switch kind {
         case .ssh:
             return port == 22 ? "\(username)@\(host)" : "\(username)@\(host):\(port)"
         case .tailcat:
-            return String(localized: "Tailcat tunnel")
+            return AppLocalization.string("Tailcat tunnel")
+        }
+    }
+}
+
+enum MobileDeviceError: LocalizedError {
+    case emptyHost, emptyUsername, invalidPort, deviceNotFound, missingPassword
+    case invalidGatewayHost, invalidGatewayPort
+    case keychain(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyHost: return AppLocalization.string("Enter a host or IP address.")
+        case .emptyUsername: return AppLocalization.string("Enter an SSH username.")
+        case .invalidPort: return AppLocalization.string("SSH port must be between 1 and 65535.")
+        case .deviceNotFound: return AppLocalization.string("This device no longer exists. Reopen its settings.")
+        case .missingPassword: return AppLocalization.string("Enter a password for this device.")
+        case .invalidGatewayHost: return AppLocalization.string("Enter a gateway hostname or IP address, without a URL or port.")
+        case .invalidGatewayPort: return AppLocalization.string("Gateway port must be between 1 and 65535.")
+        case .keychain(let status):
+            return AppLocalization.string("Could not update this device's saved credential (\(status)). Try again.")
         }
     }
 }
@@ -77,6 +148,11 @@ struct MobileDevice: Codable, Identifiable, Hashable {
 /// Persists the device list as a versioned JSON envelope in UserDefaults.
 @MainActor
 final class MobileDeviceStore {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
     private static let key = "devices.v1"
     private struct Envelope: Codable {
         var version: Int
@@ -84,7 +160,7 @@ final class MobileDeviceStore {
     }
 
     func load() -> [MobileDevice] {
-        guard let data = UserDefaults.standard.data(forKey: Self.key),
+        guard let data = defaults.data(forKey: Self.key),
               let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
         else { return [] }
         return envelope.devices
@@ -93,7 +169,7 @@ final class MobileDeviceStore {
     func save(_ devices: [MobileDevice]) {
         let envelope = Envelope(version: 1, devices: devices)
         if let data = try? JSONEncoder().encode(envelope) {
-            UserDefaults.standard.set(data, forKey: Self.key)
+            defaults.set(data, forKey: Self.key)
         }
     }
 }
@@ -115,19 +191,24 @@ enum MobileSecretStore {
         return String(data: data, encoding: .utf8)
     }
 
-    static func setPassword(_ password: String, for deviceID: UUID) {
+    static func setPassword(_ password: String, for deviceID: UUID) throws {
         let data = Data(password.utf8)
         var query = baseQuery(deviceID: deviceID)
         let update: [String: Any] = [kSecValueData as String: data]
         let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-        guard status == errSecItemNotFound else { return }
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else { throw MobileDeviceError.keychain(status) }
         query[kSecValueData as String] = data
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(query as CFDictionary, nil)
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+        guard addStatus == errSecSuccess else { throw MobileDeviceError.keychain(addStatus) }
     }
 
-    static func removePassword(for deviceID: UUID) {
-        SecItemDelete(baseQuery(deviceID: deviceID) as CFDictionary)
+    static func removePassword(for deviceID: UUID) throws {
+        let status = SecItemDelete(baseQuery(deviceID: deviceID) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw MobileDeviceError.keychain(status)
+        }
     }
 
     private static func baseQuery(deviceID: UUID) -> [String: Any] {

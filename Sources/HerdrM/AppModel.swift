@@ -161,7 +161,7 @@ final class AppModel: ObservableObject {
             // Devices, which removes the key). Every reset path — removing the
             // filtered device, a notification jump to another device — goes
             // through this property, so the stored value can never go stale.
-            UserDefaults.standard.set(deviceFilter?.uuidString, forKey: Self.deviceFilterKey)
+            defaults.set(deviceFilter?.uuidString, forKey: Self.deviceFilterKey)
         }
     }
     private static let deviceFilterKey = "device.filter"
@@ -169,11 +169,6 @@ final class AppModel: ObservableObject {
     @Published var selectedSpace: SpaceRef?
     @Published var selectedPane: PaneRef? {
         didSet {
-            // Leaving a finished agent marks it viewed. Staying on it while
-            // the turn ends must not swallow the unread flag.
-            if let old = oldValue, old != selectedPane {
-                unreadAgents.remove(AgentUnreadKey(deviceID: old.deviceID, paneID: old.paneID))
-            }
             noteSelectedAttachSession()
             if let pane = selectedPane, pane != oldValue {
                 snapPaneViewportToBottom(pane)
@@ -211,6 +206,7 @@ final class AppModel: ObservableObject {
         attachSessions.append(entry)
     }
     /// Finished agents the user has not opened since they flipped to `done`.
+    let agentReadState: AgentReadState
     @Published private(set) var unreadAgents: Set<AgentUnreadKey> = []
 
     @Published var showAddDevice = false
@@ -230,10 +226,9 @@ final class AppModel: ObservableObject {
     /// Persisted divider ratio for the ⌘D split, shared with the resize commands.
     /// Deliberately not `@AppStorage`: that publishes only from inside a View, so the
     /// menu commands would write UserDefaults without ever redrawing the split.
-    @Published var splitRatio: Double =
-        UserDefaults.standard.object(forKey: AppModel.splitRatioKey) as? Double ?? 0.5
+    @Published var splitRatio: Double = 0.5
     {
-        didSet { UserDefaults.standard.set(splitRatio, forKey: AppModel.splitRatioKey) }
+        didSet { defaults.set(splitRatio, forKey: AppModel.splitRatioKey) }
     }
     static let splitRatioKey = "terminal.splitRatio"
     /// Live terminal views of the ⌘D split, used by menu commands to move focus.
@@ -275,7 +270,8 @@ final class AppModel: ObservableObject {
     }
     @Published var closeRequest: CloseRequest?
 
-    private let store = DeviceStore()
+    private let store: DeviceStore
+    private let defaults: UserDefaults
     private var services: [UUID: HerdrService] = [:]
     private var sessionTasks: [UUID: Task<Void, Never>] = [:]
     private var refreshDebounces: [UUID: Task<Void, Never>] = [:]
@@ -287,17 +283,24 @@ final class AppModel: ObservableObject {
     private var statusGenerations: [UUID: UInt64] = [:]
     private var previousStatuses: [UUID: [String: AgentStatus]] = [:]
 
-    init() {
-        let loaded = DeviceStore().load()
+    init(store: DeviceStore = DeviceStore(), defaults: UserDefaults = .standard, readState: AgentReadState? = nil) {
+        self.store = store
+        self.defaults = defaults
+        self.agentReadState = readState ?? AgentReadState(defaults: defaults)
+        unreadAgents = agentReadState.unread
+        splitRatio = defaults.object(forKey: Self.splitRatioKey) as? Double ?? 0.5
+        let loaded = store.load()
         devices = loaded
         // Restore the device filter only if that device still exists;
         // otherwise fall back to All Devices.
-        if let raw = UserDefaults.standard.string(forKey: Self.deviceFilterKey),
+        if let raw = defaults.string(forKey: Self.deviceFilterKey),
            let id = UUID(uuidString: raw),
            loaded.contains(where: { $0.id == id }) {
             deviceFilter = id
         }
     }
+
+    func publishReadState() { unreadAgents = agentReadState.unread }
 
     // MARK: - Derived state
 
@@ -390,7 +393,7 @@ final class AppModel: ObservableObject {
                 let basename = URL(fileURLWithPath: cwd).lastPathComponent
                 if !basename.isEmpty { return basename }
             }
-            return String(localized: "Terminal")
+            return AppLocalization.string("Terminal")
         }
     }
 
@@ -685,7 +688,7 @@ final class AppModel: ObservableObject {
         let n = shellSessions.count + 1
         let session = ShellSession(
             id: UUID(),
-            title: String(localized: "Terminal \(n)"),
+            title: AppLocalization.string("Terminal \(n)"),
             device: device
         )
         shellSessions.append(session)
@@ -844,6 +847,7 @@ final class AppModel: ObservableObject {
                         throw HerdrError.connectionFailed("event stream ended")
                     }
                 } catch {
+                    self.agentReadState.connectionLost(deviceID: device.id)
                     self.sessions[device.id]?.connection = .failed(error.localizedDescription)
                     // The catalog's initial state is .loading; when connect()
                     // itself fails the load never runs, and without this the
@@ -900,7 +904,7 @@ final class AppModel: ObservableObject {
     /// Moves Claude on `device` to `account` with grazr, like its swap action
     /// but to the account picked rather than the next one with headroom.
     func switchGrazrAccount(_ account: GrazrAccount, on device: Device, onFinish: (() -> Void)? = nil) {
-        let title = String(localized: "grazr: switch to \(account.name)")
+        let title = AppLocalization.string("grazr: switch to \(account.name)")
         Task {
             defer { onFinish?() }
             do {
@@ -909,12 +913,12 @@ final class AppModel: ObservableObject {
                 if result.ok {
                     NotificationManager.shared.postPluginResult(
                         title: title,
-                        body: result.summary ?? String(localized: "Done"),
+                        body: result.summary ?? AppLocalization.string("Done"),
                         deviceName: device.name
                     )
                 } else {
                     actionError = result.summary.map { "\(title): \($0)" }
-                        ?? String(localized: "\(title) failed")
+                        ?? AppLocalization.string("\(title) failed")
                 }
             } catch {
                 actionError = actionErrorMessage(error, device: device)
@@ -940,7 +944,7 @@ final class AppModel: ObservableObject {
                 let paneID = try await service.createTab(
                     workspaceID: workspaceID,
                     cwd: nil,
-                    label: String(localized: "grazr sign-in")
+                    label: AppLocalization.string("grazr sign-in")
                 )
                 // Typed once the shell has drawn its prompt; a prompt still
                 // starting up can drop what arrives before it.
@@ -1034,6 +1038,7 @@ final class AppModel: ObservableObject {
         refreshRequested.remove(id)
         statusGenerations[id] = nil
         previousStatuses[id] = nil
+        agentReadState.connectionLost(deviceID: id)
         let service = services[id]
         services[id] = nil
         sessions[id] = nil
@@ -1119,7 +1124,7 @@ final class AppModel: ObservableObject {
     func cancelSSHAuthentication(for request: SSHAuthenticationRequest) {
         sshAuthenticationRequest = nil
         sessions[request.deviceID]?.connection =
-            .failed(String(localized: "Authentication cancelled — choose Reconnect to try again"))
+            .failed(AppLocalization.string("Authentication cancelled — choose Reconnect to try again"))
     }
 
     var hasReconnectableDevice: Bool {
@@ -1191,6 +1196,8 @@ final class AppModel: ObservableObject {
         if sshAuthenticationRequest?.deviceID == device.id { sshAuthenticationRequest = nil }
         stopSession(device.id)
         attachSessions.removeAll { $0.device.id == device.id }
+        agentReadState.removeDevice(device.id)
+        unreadAgents = agentReadState.unread
         devices.removeAll { $0.id == device.id }
         store.save(devices)
         if deviceFilter == device.id { deviceFilter = nil }
@@ -1243,12 +1250,8 @@ final class AppModel: ObservableObject {
                 refreshRequested.insert(deviceID)
                 return true
             }
-            unreadAgents = AgentUnread.applying(
-                previous: previousStatuses[deviceID] ?? [:],
-                agents: snapshot.agents,
-                unread: unreadAgents,
-                deviceID: device.id
-            )
+            agentReadState.apply(agents: snapshot.agents, deviceID: device.id, foreground: NSApp.isActive)
+            unreadAgents = agentReadState.unread
             notifyTransitions(
                 device: device,
                 from: previousStatuses[deviceID] ?? [:],
@@ -1353,12 +1356,8 @@ final class AppModel: ObservableObject {
         guard state.agents[index].status != status else { return true }
         let previous = previousStatuses[deviceID] ?? [:]
         state.agents[index] = state.agents[index].updatingStatus(status)
-        unreadAgents = AgentUnread.applying(
-            previous: previous,
-            agents: state.agents,
-            unread: unreadAgents,
-            deviceID: deviceID
-        )
+        agentReadState.apply(agents: [state.agents[index]], deviceID: deviceID, authoritative: false, foreground: NSApp.isActive)
+        unreadAgents = agentReadState.unread
         notifyTransitions(
             device: device,
             from: previous,
@@ -1459,13 +1458,13 @@ final class AppModel: ObservableObject {
         else { return error.localizedDescription }
         switch session(device.id).connection {
         case .connecting:
-            return String(localized: "Still connecting to \(device.name) — try again in a moment.")
+            return AppLocalization.string("Still connecting to \(device.name) — try again in a moment.")
         case .failed(let reason):
-            return String(localized: "\(device.name) is unreachable: \(reason)")
+            return AppLocalization.string("\(device.name) is unreachable: \(reason)")
         case .idle:
-            return String(localized: "\(device.name) isn't connected.")
+            return AppLocalization.string("\(device.name) isn't connected.")
         case .connected:
-            return String(localized: "\(device.name) just reconnected — try again.")
+            return AppLocalization.string("\(device.name) just reconnected — try again.")
         }
     }
 
@@ -1496,8 +1495,8 @@ final class AppModel: ObservableObject {
 
     func requestCloseSpace(_ entry: SpaceEntry) {
         closeRequest = CloseRequest(
-            title: String(localized: "Close space \"\(entry.workspace.label)\" on \(entry.device.name)?"),
-            message: String(localized: "All terminals and agents in this space will be closed.")
+            title: AppLocalization.string("Close space \"\(entry.workspace.label)\" on \(entry.device.name)?"),
+            message: AppLocalization.string("All terminals and agents in this space will be closed.")
         ) { [weak self] in
             guard let self else { return }
             Task {
@@ -1517,12 +1516,12 @@ final class AppModel: ObservableObject {
         guard let device = device(ref.deviceID) else { return }
         let message: String
         if let space = spaceClosedWithPane(ref) {
-            message = String(localized: "It is the last pane in the space \"\(space)\", so herdr closes the space too. Whatever is running inside it will be terminated.")
+            message = AppLocalization.string("It is the last pane in the space \"\(space)\", so herdr closes the space too. Whatever is running inside it will be terminated.")
         } else {
-            message = String(localized: "The pane and whatever is running inside it will be terminated.")
+            message = AppLocalization.string("The pane and whatever is running inside it will be terminated.")
         }
         closeRequest = CloseRequest(
-            title: String(localized: "Close \"\(name)\"?"),
+            title: AppLocalization.string("Close \"\(name)\"?"),
             message: message
         ) { [weak self] in
             guard let self else { return }
@@ -1606,12 +1605,12 @@ final class AppModel: ObservableObject {
                     if log.succeeded {
                         NotificationManager.shared.postPluginResult(
                             title: action.title,
-                            body: log.summary ?? String(localized: "Done"),
+                            body: log.summary ?? AppLocalization.string("Done"),
                             deviceName: device.name
                         )
                     } else {
                         actionError = log.summary.map { "\(action.title): \($0)" }
-                            ?? String(localized: "\(action.title) failed")
+                            ?? AppLocalization.string("\(action.title) failed")
                     }
                     break
                 }

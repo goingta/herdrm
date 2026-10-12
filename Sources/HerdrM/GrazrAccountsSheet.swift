@@ -31,7 +31,7 @@ struct GrazrAccountsSheet: View {
             HStack(spacing: 0) {
                 SheetHeader(
                     systemImage: "person.2",
-                    title: String(localized: "Claude Accounts"),
+                    title: AppLocalization.string("Claude Accounts"),
                     subtitle: subtitle
                 )
                 Picker("View", selection: $view) {
@@ -85,7 +85,7 @@ struct GrazrAccountsSheet: View {
                 }
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
-                    .tint(Theme.accent)
+                    .tint(Theme.primary).foregroundStyle(Theme.primaryText)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 16)
@@ -99,10 +99,10 @@ struct GrazrAccountsSheet: View {
         guard let report else { return device.name }
         var parts = [
             device.name,
-            String(localized: "swaps below \(report.sessionThreshold)% 5h · \(report.weeklyThreshold)% week"),
+            AppLocalization.string("swaps below \(report.sessionThreshold)% 5h · \(report.weeklyThreshold)% week"),
         ]
-        if !report.enabled { parts.append(String(localized: "automatic swaps off")) }
-        if report.dryRun { parts.append(String(localized: "dry run")) }
+        if !report.enabled { parts.append(AppLocalization.string("automatic swaps off")) }
+        if report.dryRun { parts.append(AppLocalization.string("dry run")) }
         return parts.joined(separator: " · ")
     }
 
@@ -112,9 +112,9 @@ struct GrazrAccountsSheet: View {
             message(failure, systemImage: "exclamationmark.triangle")
         } else if let report {
             if !report.installed {
-                message(String(localized: "grazr is not installed on \(device.name)."), systemImage: "person.crop.circle.badge.questionmark")
+                message(AppLocalization.string("grazr is not installed on \(device.name)."), systemImage: "person.crop.circle.badge.questionmark")
             } else if report.accounts.isEmpty {
-                message(String(localized: "No accounts enrolled yet."), systemImage: "person.crop.circle.badge.plus")
+                message(AppLocalization.string("No accounts enrolled yet."), systemImage: "person.crop.circle.badge.plus")
             } else if view == .dial || view == .clock {
                 ScrollView {
                     VStack(spacing: 6) {
@@ -200,7 +200,7 @@ struct GrazrAccountsSheet: View {
             report = try JSONDecoder().decode(GrazrReport.self, from: output)
             failure = nil
         } catch {
-            failure = String(localized: "Could not read grazr's accounts on \(device.name): \(error.localizedDescription)")
+            failure = AppLocalization.string("Could not read grazr's accounts on \(device.name): \(error.localizedDescription)")
         }
     }
 }
@@ -223,12 +223,12 @@ private struct GrazrAccountCard: View {
                     .foregroundStyle(isActive ? Theme.statsAccount : Theme.text)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if isActive { badge(String(localized: "Active"), color: Theme.success) }
+                if isActive { badge(AppLocalization.string("Active"), color: Theme.success) }
                 if let block = report.block(for: account, now: now) {
-                    badge(String(localized: "Blocked: \(block.reason)"), color: Theme.danger)
+                    badge(AppLocalization.string("Blocked: \(block.reason)"), color: Theme.danger)
                 }
                 if !report.isListed(account) {
-                    badge(String(localized: "Not in ACCOUNTS"), color: Theme.textTertiary)
+                    badge(AppLocalization.string("Not in ACCOUNTS"), color: Theme.textTertiary)
                 }
                 Spacer(minLength: 0)
                 if report.canSwitch(to: account, now: now) {
@@ -297,8 +297,8 @@ private struct GrazrAccountCard: View {
 
     private func resetText(_ window: GrazrWindow) -> String {
         guard let resetsAt = window.resetsAt else { return "" }
-        guard window.isOpen(now: now) else { return String(localized: "reset since") }
-        return String(localized: "resets \(GrazrStyle.time(resetsAt, now: now))")
+        guard window.isOpen(now: now) else { return AppLocalization.string("reset since") }
+        return AppLocalization.string("resets \(GrazrStyle.time(resetsAt, now: now))")
     }
 
     private func badge(_ text: String, color: Color) -> some View {

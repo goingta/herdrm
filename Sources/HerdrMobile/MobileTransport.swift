@@ -11,10 +11,13 @@ protocol MobileTransport: AnyObject, Sendable {
     func request(method: String, params: JSONValue) async throws -> JSONValue
     func events(kinds: [String], statusPaneIDs: [String]) -> AsyncThrowingStream<HerdrEvent, Error>
     func openTerminal(command: String, columns: Int, rows: Int) async throws -> SSHPTYChannel
+    /// Read-only checkout metadata. Control-only transports may not expose a shell.
+    func gitBranch(at path: String) async throws -> String?
     func close() async
 }
 
 extension MobileTransport {
+    func gitBranch(at path: String) async throws -> String? { nil }
     func request<T: Decodable>(
         method: String,
         params: JSONValue = .object([:]),
@@ -31,6 +34,10 @@ extension MobileTransport {
 }
 
 enum MobileTransportError: LocalizedError {
+    case gatewayUnavailable
+    case gatewayTimedOut
+    case gatewayRejected(status: Int)
+    case gatewayInvalidResponse
     case hostKeyChanged(fingerprint: String)
     case missingPassword
     case homeProbeFailed
@@ -38,16 +45,24 @@ enum MobileTransportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .gatewayUnavailable:
+            return AppLocalization.string("Cannot reach the HTTP CONNECT gateway. Check its host, port and network access.")
+        case .gatewayTimedOut:
+            return AppLocalization.string("The HTTP CONNECT gateway timed out. Check the gateway address and whether it can reach the SSH host.")
+        case .gatewayRejected(let status):
+            return AppLocalization.string("The HTTP CONNECT gateway refused the tunnel (HTTP \(status)). Check the SSH host and gateway policy.")
+        case .gatewayInvalidResponse:
+            return AppLocalization.string("The gateway did not return a valid HTTP CONNECT response. Check that its port supports HTTP CONNECT.")
         case .hostKeyChanged(let fingerprint):
-            return String(
-                localized: "This device's SSH host key changed (\(fingerprint)). If the host was reinstalled, remove and re-add the device."
+            return AppLocalization.string(
+                "This device's SSH host key changed (\(fingerprint)). If the host was reinstalled, remove and re-add the device."
             )
         case .missingPassword:
-            return String(localized: "No password saved for this device.")
+            return AppLocalization.string("No password saved for this device.")
         case .homeProbeFailed:
-            return String(localized: "Could not resolve the home directory on the device.")
+            return AppLocalization.string("Could not resolve the home directory on the device.")
         case .tailcatTerminalUnsupported:
-            return String(localized: "Terminal attach isn't available over tailcat on iOS yet — the tunnel carries herdr's control plane only.")
+            return AppLocalization.string("Terminal attach isn't available over tailcat on iOS yet — the tunnel carries herdr's control plane only.")
         }
     }
 }
@@ -70,10 +85,23 @@ final class SSHDirectTransport: MobileTransport {
     /// authenticates (device key or Keychain password), and resolves the
     /// remote herdr socket path against the remote $HOME.
     static func connect(device: MobileDevice) async throws -> SSHDirectTransport {
-        let connection = try await SSHConnection.connect(
-            to: SSHEndpoint(host: device.host, port: device.port),
-            timeout: .seconds(10)
-        )
+        let connection: SSHConnection
+        do {
+            connection = try await SSHConnection.connect(
+                to: SSHEndpoint(host: device.host, port: device.port),
+                via: device.sshRoute == .httpConnect
+                    ? SSHEndpoint(host: device.gatewayHost, port: device.gatewayPort) : nil,
+                timeout: .seconds(10)
+            )
+        } catch let error as SSHError {
+            switch error {
+            case .httpConnectUnavailable: throw MobileTransportError.gatewayUnavailable
+            case .httpConnectTimedOut: throw MobileTransportError.gatewayTimedOut
+            case .httpConnectRejected(let status): throw MobileTransportError.gatewayRejected(status: status)
+            case .invalidHTTPConnectResponse: throw MobileTransportError.gatewayInvalidResponse
+            default: throw error
+            }
+        }
         do {
             let hostKey = connection.hostKey
             let fingerprint = Self.fingerprint(hostKey.key)
@@ -134,6 +162,20 @@ final class SSHDirectTransport: MobileTransport {
 
     static func fingerprint(_ key: Data) -> String {
         "SHA256:" + Data(SHA256.hash(data: key)).base64EncodedString()
+    }
+
+    func gitBranch(at path: String) async throws -> String? {
+        guard path.hasPrefix("/"), !path.contains("\0"), path.utf8.count <= 4096 else { return nil }
+        // Never interpolate a cwd as shell syntax. symbolic-ref only reads HEAD;
+        // non-repositories and detached checkouts have no branch to invent.
+        let quoted = "'" + path.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+        let result = try await connection.execute(
+            "GIT_OPTIONAL_LOCKS=0 git -C \(quoted) symbolic-ref --quiet --short HEAD", timeout: .seconds(2))
+        guard result.exitStatus == 0, result.reachedEOF, result.stdout.count <= 1024,
+              let output = String(data: result.stdout, encoding: .utf8) else { return nil }
+        let branch = output.trimmingCharacters(in: .newlines)
+        guard !branch.isEmpty, !branch.contains(where: { $0.isNewline || $0.asciiValue.map { $0 < 32 || $0 == 127 } == true }) else { return nil }
+        return branch
     }
 
     func request(method: String, params: JSONValue) async throws -> JSONValue {
