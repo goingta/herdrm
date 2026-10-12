@@ -1,21 +1,27 @@
 # herdrm application icon
 
-`herdrm-icon.svg` and `herdrm-icon-1024.png` are the existing Mac artwork.
-Both applications use that composition; the mobile icon is a generated resource,
-not separately designed artwork. The formal display name is `herdrm` on both
-platforms. Bundle identifiers are independent of this branding and remain unchanged.
+`herdrm-icon.svg` is the canonical D design: three compact TUI status rows,
+a green terminal prompt and a white block cursor. The selected concept was
+redrawn in the existing editable vector resource; the generated concept board
+is not cropped or used as an application asset.
 
-Mac keeps `Sources/HerdrM/AppIcon.icon` and its existing Icon Composer presentation.
+Both applications use the same full-bleed composition. Mac keeps
+`Sources/HerdrM/AppIcon.icon` and its existing Icon Composer presentation.
 The mobile asset catalog supports iOS 18 and lets the system apply its icon mask;
 its full-square 1024-pixel PNG has no alpha channel. No rounded mask is baked in.
+The formal display name remains `herdrm`; bundle identifiers remain unchanged.
 
-After updating the canonical PNG, regenerate the mobile copy from the repository
-root using the system image framework:
+After editing the SVG, regenerate all native assets on macOS from the repository
+root using the system image frameworks:
 
 ```sh
 swift Resources/AppIcon/generate-mobile-icon.swift
 ```
 
-The current artwork is fully opaque. This preserves its sRGB composition and
-removes the redundant alpha channel. If future artwork introduces transparency, fill
-its background in the canonical source before generating the mobile icon.
+The script renders the SVG to sRGB, writes identical canonical and Mac source
+PNGs, and removes the redundant alpha channel for the iOS copy. Every pixel in
+the square source is opaque. `herdrm-icon-rounded.png` is a 256-pixel documentation
+preview only; it is not an input to either platform's application icon.
+
+The green application icon identifies herdrm independently of the selected UI
+theme. Switching a theme does not select an alternate application icon.
